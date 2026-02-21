@@ -94,13 +94,21 @@ def main():
 
     input_paths = [Path(p).expanduser().resolve() for p in args.input]
     
-    # Validate all input files exist
+    # Validate all input files exist and skip missing ones
+    valid_input_paths = []
     for input_path in input_paths:
         if not input_path.exists():
-            raise FileNotFoundError(str(input_path))
+            print(f"Warning: File not found, skipping: {input_path}")
+        else:
+            valid_input_paths.append(input_path)
+    
+    # If no valid files, exit
+    if not valid_input_paths:
+        print("No valid input files provided.")
+        return
 
     # Process each input file
-    for input_path in input_paths:
+    for input_path in valid_input_paths:
         print(f"Processing: {input_path}")
         
         out_base = Path(args.out).expanduser().resolve() if args.out else input_path.with_suffix("")
