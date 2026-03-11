@@ -5,17 +5,14 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from tqdm import tqdm
-
 from .cli import parse_args
 from .config import Config
-from .downloader import download_audio, cleanup_audio_file, DownloadError
-from .file_writer import write_transcript, combine_transcripts
-from .playlist import process_playlist_with_retry, PlaylistError
-from .transcript import get_official_transcript, NoTranscriptError
-from .url_parser import parse_input, read_urls_from_file, extract_video_id
-from .whisper import transcribe_with_whisper, get_device
-from .url_parser import extract_video_id as url_extract_video_id
+from .downloader import DownloadError, cleanup_audio_file, download_audio
+from .file_writer import combine_transcripts, write_transcript
+from .playlist import PlaylistError, process_playlist_with_retry
+from .transcript import NoTranscriptError, get_official_transcript
+from .url_parser import extract_video_id, parse_input, read_urls_from_file
+from .whisper import get_device, transcribe_with_whisper
 
 
 class Transcriber:

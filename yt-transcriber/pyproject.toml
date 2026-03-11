@@ -38,6 +38,7 @@ select = [
 ]
 ignore = [
     "E501",  # line too long, handled by formatter
+    "B904",  # allow raising custom errors without chaining
 ]
 
 [tool.pytest.ini_options]

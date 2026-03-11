@@ -4,10 +4,10 @@ import re
 from typing import Optional
 
 from youtube_transcript_api import (
-    YouTubeTranscriptApi,
-    TranscriptsDisabled,
     NoTranscriptFound,
+    TranscriptsDisabled,
     VideoUnavailable,
+    YouTubeTranscriptApi,
 )
 
 
@@ -78,7 +78,7 @@ def get_official_transcript(video_id: str, language: Optional[str] = None) -> tu
         raise NoTranscriptError(f"Video {video_id} is unavailable")
 
     except Exception as e:
-        raise NoTranscriptError(f"Error fetching transcript for {video_id}: {e}")
+        raise NoTranscriptError(f"Error fetching transcript for {video_id}: {e}") from e
 
 
 def get_available_transcripts(video_id: str) -> list[dict]:

@@ -1,9 +1,6 @@
 """Playlist processing with rate limiting."""
 
 import asyncio
-import time
-from pathlib import Path
-from typing import Optional
 
 from pytube import Playlist
 
@@ -47,7 +44,7 @@ def get_playlist_videos(playlist_url: str) -> list[dict]:
         return videos
 
     except Exception as e:
-        raise PlaylistError(f"Failed to access playlist: {e}")
+        raise PlaylistError(f"Failed to access playlist: {e}") from e
 
 
 async def process_playlist_with_retry(
@@ -71,7 +68,7 @@ async def process_playlist_with_retry(
     try:
         playlist = Playlist(playlist_url)
     except Exception as e:
-        raise PlaylistError(f"Failed to access playlist: {e}")
+        raise PlaylistError(f"Failed to access playlist: {e}") from e
 
     # Get all video URLs
     video_urls = list(playlist.video_urls)

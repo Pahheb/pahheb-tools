@@ -1,6 +1,5 @@
 """Local transcription using faster-whisper with AMD GPU support."""
 
-import os
 from pathlib import Path
 from typing import Optional
 

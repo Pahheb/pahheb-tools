@@ -1,11 +1,9 @@
 """Audio download from YouTube using pytube."""
 
-import os
-import tempfile
 from pathlib import Path
 from typing import Optional
 
-from pytube import YouTube, Stream
+from pytube import Stream, YouTube
 
 
 class DownloadError(Exception):
@@ -62,7 +60,7 @@ def download_audio(video_id: str, output_dir: Path) -> Path:
         return output_path
 
     except Exception as e:
-        raise DownloadError(f"Failed to download audio for {video_id}: {e}")
+        raise DownloadError(f"Failed to download audio for {video_id}: {e}") from e
 
 
 def cleanup_audio_file(audio_path: Path) -> None:

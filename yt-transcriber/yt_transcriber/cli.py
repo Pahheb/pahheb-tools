@@ -1,7 +1,6 @@
 """CLI argument parsing for yt-transcriber."""
 
 import argparse
-from pathlib import Path
 
 
 def parse_args() -> argparse.Namespace:

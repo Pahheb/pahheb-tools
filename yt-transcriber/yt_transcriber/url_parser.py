@@ -4,7 +4,6 @@ import re
 from pathlib import Path
 from typing import Optional
 
-
 # YouTube URL patterns
 VIDEO_PATTERNS = [
     # https://www.youtube.com/watch?v=VIDEO_ID
@@ -194,6 +193,6 @@ def read_urls_from_file(file_path: str) -> list[str]:
                 if line and is_youtube_url(line):
                     urls.append(line)
     except (IOError, UnicodeDecodeError) as e:
-        raise ValueError(f"Error reading file {file_path}: {e}")
+        raise ValueError(f"Error reading file {file_path}: {e}") from e
 
     return urls
