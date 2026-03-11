@@ -45,5 +45,8 @@ elif [ ! -f "$VENV_DIR/bin/python" ]; then
     setup_venv
 fi
 
+# Add venv bin directory to PATH so yt-dlp is available
+export PATH="$VENV_DIR/bin:$PATH"
+
 # Run the tool using the venv's Python
 exec "$VENV_DIR/bin/python" -m yt_transcriber "$@"

@@ -1,8 +1,8 @@
-"""Playlist processing with rate limiting."""
+"""Playlist processing with rate limiting using yt-dlp."""
 
 import asyncio
-
-from pytube import Playlist
+import subprocess
+import json
 
 
 class PlaylistError(Exception):
@@ -13,7 +13,7 @@ class PlaylistError(Exception):
 
 def get_playlist_videos(playlist_url: str) -> list[dict]:
     """
-    Extract all video IDs and titles from a playlist.
+    Extract all video IDs and titles from a playlist using yt-dlp.
 
     Args:
         playlist_url: YouTube playlist URL
@@ -25,24 +25,50 @@ def get_playlist_videos(playlist_url: str) -> list[dict]:
         PlaylistError: If playlist cannot be accessed
     """
     try:
-        playlist = Playlist(playlist_url)
-        videos = []
+        # Use yt-dlp to get playlist info in JSON format
+        cmd = [
+            "yt-dlp",
+            "--flat-playlist",
+            "--print-json",
+            "--no-warnings",
+            playlist_url,
+        ]
 
-        # Get all video URLs from playlist
-        for url in playlist.video_urls:
-            # Extract video ID from URL
-            video_id = url.split("v=")[1].split("&")[0] if "v=" in url else None
-            if video_id:
-                videos.append(
-                    {
-                        "video_id": video_id,
-                        "url": url,
-                        "title": "",  # Will be fetched later
-                    }
-                )
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        if result.returncode != 0:
+            raise PlaylistError(f"yt-dlp failed: {result.stderr}")
+
+        # Parse JSON output - yt-dlp outputs one JSON object per line
+        videos = []
+        for line in result.stdout.strip().split("\n"):
+            if line:
+                try:
+                    info = json.loads(line)
+                    if info.get("_type") == "url":
+                        video_id = info.get("id") or info.get("url")
+                        if video_id:
+                            videos.append(
+                                {
+                                    "video_id": video_id,
+                                    "url": info.get("url", ""),
+                                    "title": info.get("title", ""),
+                                }
+                            )
+                except json.JSONDecodeError:
+                    continue
 
         return videos
 
+    except subprocess.TimeoutExpired:
+        raise PlaylistError(f"Playlist extraction timed out for {playlist_url}")
+    except FileNotFoundError:
+        raise PlaylistError("yt-dlp not found. Please install it with: pip install yt-dlp")
     except Exception as e:
         raise PlaylistError(f"Failed to access playlist: {e}") from e
 
@@ -66,13 +92,11 @@ async def process_playlist_with_retry(
         Tuple of (successful_videos, failed_videos)
     """
     try:
-        playlist = Playlist(playlist_url)
-    except Exception as e:
-        raise PlaylistError(f"Failed to access playlist: {e}") from e
+        videos = get_playlist_videos(playlist_url)
+    except PlaylistError as e:
+        raise e
 
-    # Get all video URLs
-    video_urls = list(playlist.video_urls)
-    total_videos = len(video_urls)
+    total_videos = len(videos)
 
     if total_videos == 0:
         return [], []
@@ -80,11 +104,13 @@ async def process_playlist_with_retry(
     successful = []
     failed = []
 
-    for index, url in enumerate(video_urls, 1):
-        # Extract video ID
-        video_id = url.split("v=")[1].split("&")[0] if "v=" in url else None
+    for index, video_info in enumerate(videos, 1):
+        video_id = video_info.get("video_id")
+        url = video_info.get("url", "")
+        title = video_info.get("title", "")
+
         if not video_id:
-            failed.append({"video_id": "unknown", "url": url, "reason": "Invalid URL"})
+            failed.append({"video_id": "unknown", "url": url, "reason": "Invalid video ID"})
             continue
 
         # Retry logic
@@ -94,7 +120,14 @@ async def process_playlist_with_retry(
                 result = await process_video_func(video_id, index, total_videos)
 
                 if result:
-                    successful.append({"video_id": video_id, "url": url, "result": result})
+                    successful.append(
+                        {
+                            "video_id": video_id,
+                            "url": url,
+                            "title": title,
+                            "result": result,
+                        }
+                    )
                 else:
                     failed.append(
                         {"video_id": video_id, "url": url, "reason": "Processing returned None"}

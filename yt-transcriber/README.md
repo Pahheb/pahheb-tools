@@ -17,7 +17,8 @@ A powerful command-line tool for transcribing YouTube videos. It automatically e
 
 - Python 3.12+
 - `uv` package manager (recommended)
-- FFmpeg (for audio extraction)
+- `yt-dlp` (for downloading audio from YouTube)
+- FFmpeg (for audio processing, used by yt-dlp)
 - AMD ROCm (optional, for GPU acceleration)
 
 ### Setup Virtual Environment (Recommended)

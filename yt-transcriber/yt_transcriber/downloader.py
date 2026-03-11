@@ -1,9 +1,7 @@
-"""Audio download from YouTube using pytube."""
+"""Audio download from YouTube using yt-dlp."""
 
+import subprocess
 from pathlib import Path
-from typing import Optional
-
-from pytube import Stream, YouTube
 
 
 class DownloadError(Exception):
@@ -14,7 +12,7 @@ class DownloadError(Exception):
 
 def download_audio(video_id: str, output_dir: Path) -> Path:
     """
-    Download audio stream from YouTube video.
+    Download audio stream from YouTube video using yt-dlp.
 
     Args:
         video_id: YouTube video ID
@@ -29,36 +27,48 @@ def download_audio(video_id: str, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     url = f"https://www.youtube.com/watch?v={video_id}"
+    output_path = output_dir / f"{video_id}_audio.wav"
 
     try:
-        yt = YouTube(url)
+        # Use yt-dlp to download audio as WAV
+        cmd = [
+            "yt-dlp",
+            "-x",  # Extract audio
+            "--audio-format",
+            "wav",
+            "--audio-quality",
+            "0",  # Best quality
+            "--output",
+            str(output_path.with_suffix(".%(ext)s")),
+            url,
+        ]
 
-        # Get best audio stream
-        audio_stream: Optional[Stream] = None
+        # Run yt-dlp
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=300,  # 5 minute timeout
+        )
 
-        # Prefer adaptive streams (audio-only)
-        adaptive_streams = yt.streams.filter(adaptive=True, only_audio=True)
-        if adaptive_streams:
-            audio_stream = adaptive_streams.order_by("abr").last()
-        else:
-            # Fallback to progressive streams with audio
-            progressive_streams = yt.streams.filter(progressive=True, only_audio=False)
-            if progressive_streams:
-                audio_stream = progressive_streams.order_by("abr").last()
+        if result.returncode != 0:
+            raise DownloadError(f"yt-dlp failed: {result.stderr}")
 
-        if not audio_stream:
-            raise DownloadError(f"No audio stream available for video {video_id}")
-
-        # Create temporary file path
-        # Use .m4a for adaptive streams, .mp4 for progressive
-        ext = "m4a" if audio_stream.adaptive else "mp4"
-        output_path = output_dir / f"{video_id}_audio.{ext}"
-
-        # Download the audio
-        audio_stream.download(output_path=str(output_dir), filename=f"{video_id}_audio.{ext}")
+        # yt-dlp adds the extension, so we check if the .wav file exists
+        if not output_path.exists():
+            # Try finding the actual file (yt-dlp might have changed the name)
+            possible_files = list(output_dir.glob(f"{video_id}_audio.*"))
+            if possible_files:
+                output_path = possible_files[0]
+            else:
+                raise DownloadError(f"Downloaded file not found: {output_path}")
 
         return output_path
 
+    except subprocess.TimeoutExpired:
+        raise DownloadError(f"Download timed out for video {video_id}")
+    except FileNotFoundError:
+        raise DownloadError("yt-dlp not found. Please install it with: pip install yt-dlp")
     except Exception as e:
         raise DownloadError(f"Failed to download audio for {video_id}: {e}") from e
 

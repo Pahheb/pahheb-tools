@@ -8,7 +8,7 @@ license = {text = "MIT"}
 
 dependencies = [
     "youtube-transcript-api>=0.6.0",
-    "pytube>=15.0.0",
+    "yt-dlp>=2026.0.0",
     "faster-whisper>=1.0.0",
     "torch>=2.2.0",
     "tqdm>=4.66.0",
@@ -40,6 +40,12 @@ ignore = [
     "E501",  # line too long, handled by formatter
     "B904",  # allow raising custom errors without chaining
 ]
+
+[tool.setuptools]
+packages = ["yt_transcriber"]
+
+[tool.setuptools.package-dir]
+yt_transcriber = "yt_transcriber"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
