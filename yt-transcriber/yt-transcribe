@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Wrapper script for yt-transcribe
+# Automatically creates and uses the virtual environment
+
+set -e
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Path to the virtual environment
+VENV_DIR="$SCRIPT_DIR/.venv"
+
+# Function to check if uv is installed
+check_uv() {
+    if ! command -v uv &> /dev/null; then
+        echo "Error: 'uv' package manager is not installed"
+        echo "Please install uv: https://github.com/astral-sh/uv#installation"
+        echo "Or install dependencies manually with: pip install yt-transcriber"
+        exit 1
+    fi
+}
+
+# Function to setup virtual environment
+setup_venv() {
+    echo "Setting up virtual environment..."
+    check_uv
+
+    # Create venv
+    uv venv --python 3.12 "$VENV_DIR"
+
+    # Install dependencies
+    echo "Installing dependencies..."
+    uv pip install -e "$SCRIPT_DIR" --quiet
+
+    echo "Virtual environment created at $VENV_DIR"
+}
+
+# Check if venv exists
+if [ ! -d "$VENV_DIR" ]; then
+    echo "Virtual environment not found."
+    setup_venv
+elif [ ! -f "$VENV_DIR/bin/python" ]; then
+    echo "Virtual environment is corrupted or incomplete."
+    rm -rf "$VENV_DIR"
+    setup_venv
+fi
+
+# Run the tool using the venv's Python
+exec "$VENV_DIR/bin/python" -m yt_transcriber "$@"

@@ -16,20 +16,37 @@ A powerful command-line tool for transcribing YouTube videos. It automatically e
 ### Prerequisites
 
 - Python 3.12+
+- `uv` package manager (recommended)
 - FFmpeg (for audio extraction)
 - AMD ROCm (optional, for GPU acceleration)
 
-### Install Dependencies
+### Setup Virtual Environment (Recommended)
+
+The tool uses `uv` to manage a dedicated virtual environment. Run the setup script:
 
 ```bash
 cd yt-transcriber
-pip install -e .
+./setup.sh
 ```
 
-For development (includes tests and linting):
+This will:
+1. Create a virtual environment at `.venv/`
+2. Install all dependencies
+3. Install development tools (pytest, ruff, mypy)
+
+**Manual setup alternative:**
+```bash
+cd yt-transcriber
+uv venv --python 3.12 .venv
+uv pip install -e ".[dev]"
+```
+
+### Alternative: Global Installation
+
+If you prefer a global installation (not recommended):
 
 ```bash
-pip install -e ".[dev]"
+pip install yt-transcriber
 ```
 
 ### Install FFmpeg
@@ -49,10 +66,28 @@ brew install ffmpeg
 
 ### Basic Usage
 
-Transcribe a single video:
+**Option 1: Using the wrapper script (recommended)**
+
+The wrapper script automatically uses the virtual environment:
 
 ```bash
+cd yt-transcriber
+./yt-transcribe https://www.youtube.com/watch?v=dQw4w9WgXcQ
+```
+
+**Option 2: Activating the virtual environment**
+
+```bash
+cd yt-transcriber
+source .venv/bin/activate
 yt-transcribe https://www.youtube.com/watch?v=dQw4w9WgXcQ
+```
+
+**Option 3: Direct Python invocation**
+
+```bash
+cd yt-transcriber
+python -m yt_transcriber https://www.youtube.com/watch?v=dQw4w9WgXcQ
 ```
 
 ### Options
