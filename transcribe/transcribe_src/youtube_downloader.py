@@ -31,6 +31,8 @@ def download_youtube_audio(
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    existing_files = set(output_dir.glob("*.wav"))
+
     output_template = str(output_dir / "%(title)s_%(id)s.%(ext)s")
 
     cmd = [
@@ -66,13 +68,17 @@ def download_youtube_audio(
         raise YouTubeDownloadError("yt-dlp not found. Install with: pip install yt-dlp")
 
     audio_files = list(output_dir.glob("*.wav"))
-    if not audio_files:
+    new_files = [f for f in audio_files if f not in existing_files]
+
+    if not new_files:
+        if audio_files:
+            return audio_files[0]
         raise YouTubeDownloadError("No audio file was downloaded")
 
     if verbose:
-        print(f"Downloaded: {audio_files[0]}")
+        print(f"Downloaded: {new_files[0]}")
 
-    return audio_files[0]
+    return new_files[0]
 
 
 def get_youtube_video_info(
