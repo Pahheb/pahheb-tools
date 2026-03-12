@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Wrapper script for summarize
+# Automatically creates and uses the virtual environment
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_DIR="$SCRIPT_DIR/.venv"
+
+check_uv() {
+    if ! command -v uv &> /dev/null; then
+        echo "Error: 'uv' package manager is not installed"
+        echo "Please install uv: https://github.com/astral-sh/uv#installation"
+        exit 1
+    fi
+}
+
+setup_venv() {
+    echo "Setting up virtual environment..."
+    check_uv
+
+    uv venv --python 3.12 "$VENV_DIR"
+
+    echo "Installing dependencies..."
+    uv pip install -e "$SCRIPT_DIR" --python "$VENV_DIR/bin/python"
+
+    echo "Virtual environment created at $VENV_DIR"
+}
+
+if [ ! -d "$VENV_DIR" ]; then
+    echo "Virtual environment not found."
+    setup_venv
+elif [ ! -f "$VENV_DIR/bin/python" ]; then
+    echo "Virtual environment is corrupted or incomplete."
+    rm -rf "$VENV_DIR"
+    setup_venv
+fi
+
+export PATH="$VENV_DIR/bin:$PATH"
+
+exec "$VENV_DIR/bin/python" -m summarize_src "$@"

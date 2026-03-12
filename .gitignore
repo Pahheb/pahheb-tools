@@ -4,5 +4,7 @@ venv/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
-transcribe/tests/__pycache__/
+summarize/summarize_src/__pycache__/
+summarize/tests/__pycache__
+/transcribe/tests/__pycache__/
 transcribe/transcribe_src/__pycache__/
