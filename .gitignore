@@ -1,2 +1,8 @@
 .aider*
 venv/
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+transcribe/tests/__pycache__/
+transcribe/transcribe_src/__pycache__/

@@ -1,0 +1,32 @@
+[project]
+name = "transcribe"
+version = "1.0.0"
+description = "Unified transcription tool for local files and YouTube videos"
+requires-python = ">=3.12"
+readme = "README.md"
+license = {text = "MIT"}
+
+dependencies = [
+    "yt-dlp>=2026.0.0",
+    "faster-whisper>=1.0.0",
+    "torch>=2.2.0",
+    "tqdm>=4.66.0",
+]
+
+[project.scripts]
+transcribe = "transcribe_src.__main__:main"
+
+[project.optional-dependencies]
+
+[tool.setuptools]
+packages = ["transcribe_src"]
+
+[tool.setuptools.package-dir]
+transcribe_src = "transcribe_src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"

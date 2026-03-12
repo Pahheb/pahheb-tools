@@ -1,48 +1,49 @@
-"""Configuration management for yt-transcriber."""
+"""Configuration management for transcribe tool."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 
 @dataclass
 class Config:
-    """Configuration for yt-transcriber."""
+    """Configuration for transcribe tool."""
 
-    # Input/output
-    input_source: str
-    output_dir: Path
-    combine: bool = False
+    source: str
+    input_path: str
+    output_dir: Path = field(default_factory=lambda: Path("./transcriptions"))
 
-    # Transcription settings
     language: Optional[str] = None
     model_size: str = "small"
     device: str = "auto"
+    compute_type: Optional[str] = None
 
-    # Processing settings
-    sleep_delay: int = 2
+    denoise: bool = False
+    denoise_model: Optional[str] = None
+    vad: bool = False
+    audio_enhance: bool = False
+    srt: bool = False
+
+    cleanup: bool = False
+
     verbose: bool = False
 
     def __post_init__(self):
         """Validate configuration after initialization."""
-        # Ensure output directory is a Path
         if isinstance(self.output_dir, str):
             self.output_dir = Path(self.output_dir)
 
-        # Validate model size
+        if self.source not in ("local", "youtube"):
+            raise ValueError(f"Invalid source: {self.source}. Must be 'local' or 'youtube'")
+
         valid_models = {"tiny", "base", "small", "medium", "large-v3"}
         if self.model_size not in valid_models:
             raise ValueError(
                 f"Invalid model_size: {self.model_size}. Must be one of: {', '.join(valid_models)}"
             )
 
-        # Validate device
         valid_devices = {"auto", "cuda", "cpu", "mps"}
         if self.device not in valid_devices:
             raise ValueError(
                 f"Invalid device: {self.device}. Must be one of: {', '.join(valid_devices)}"
             )
-
-        # Validate sleep delay
-        if self.sleep_delay < 0:
-            raise ValueError("sleep_delay must be non-negative")
