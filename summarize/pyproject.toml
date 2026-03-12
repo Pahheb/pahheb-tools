@@ -1,0 +1,29 @@
+[project]
+name = "summarize"
+version = "1.0.0"
+description = "AI-powered summarization of video/audio transcriptions"
+requires-python = ">=3.12"
+readme = "README.md"
+license = {text = "MIT"}
+
+dependencies = [
+    "httpx>=0.27.0",
+]
+
+[project.scripts]
+summarize = "summarize_src.__main__:main"
+
+[project.optional-dependencies]
+
+[tool.setuptools]
+packages = ["summarize_src"]
+
+[tool.setuptools.package-dir]
+summarize_src = "summarize_src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
