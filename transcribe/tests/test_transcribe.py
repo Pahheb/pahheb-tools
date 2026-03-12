@@ -1,17 +1,24 @@
 """Tests for transcribe tool."""
 
+import os
 import pytest
+import subprocess
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
 
-from transcribe.config import Config
-from transcribe.file_writer import (
+from transcribe_src.config import Config
+from transcribe_src.file_writer import (
     sanitize_filename,
     format_srt_timestamp,
     write_transcript_txt,
     write_transcript_srt,
 )
-from transcribe.progress import ProgressTracker
+from transcribe_src.progress import ProgressTracker
+from transcribe_src.youtube_downloader import (
+    download_youtube_audio,
+    get_youtube_video_info,
+    YouTubeDownloadError,
+)
 
 
 class TestConfig:
@@ -149,3 +156,128 @@ class TestProgressTracker:
         assert tracker.current == 5
         tracker.update()
         assert tracker.current == 6
+
+
+class TestYouTubeDownloader:
+    """Tests for YouTube downloader functions."""
+
+    @patch("subprocess.run")
+    def test_download_returns_newly_downloaded_file(self, mock_run, tmp_path):
+        """Test that download returns the newly downloaded file, not existing ones.
+
+        This is a regression test for the bug where downloading a second video
+        would return the first video's audio file if it already existed in
+        the work directory.
+        """
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        existing_audio = tmp_path / "existing_video.wav"
+        existing_audio.write_text("existing audio content")
+
+        new_audio = tmp_path / "new_video_title_newvideo.wav"
+        new_audio.write_text("new audio content")
+
+        result = download_youtube_audio(
+            "https://youtube.com/watch?v=newvideo",
+            tmp_path,
+            verbose=False,
+        )
+
+        assert "newvideo" in str(result)
+        assert "existing" not in str(result)
+
+    @patch("subprocess.run")
+    def test_download_returns_first_file_when_only_one_exists(self, mock_run, tmp_path):
+        """Test return first file when only one exists (backward compatibility)."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        audio_file = tmp_path / "some_video.wav"
+        audio_file.write_text("audio content")
+
+        result = download_youtube_audio(
+            "https://youtube.com/watch?v=somevideo",
+            tmp_path,
+            verbose=False,
+        )
+
+        assert result == audio_file
+
+    @patch("subprocess.run")
+    def test_download_raises_on_empty_directory(self, mock_run, tmp_path):
+        """Test that download raises error when no audio file is downloaded."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        with pytest.raises(YouTubeDownloadError, match="No audio file"):
+            download_youtube_audio(
+                "https://youtube.com/watch?v=test",
+                tmp_path,
+                verbose=False,
+            )
+
+    @patch("subprocess.run")
+    def test_download_raises_on_yt_dlp_failure(self, mock_run, tmp_path):
+        """Test that download raises error when yt-dlp fails."""
+        mock_run.return_value = MagicMock(returncode=1, stderr="ERROR: Video not found")
+
+        with pytest.raises(YouTubeDownloadError, match="yt-dlp failed"):
+            download_youtube_audio(
+                "https://youtube.com/watch?v=invalid",
+                tmp_path,
+                verbose=False,
+            )
+
+    @patch("subprocess.run")
+    def test_download_raises_when_yt_dlp_not_found(self, mock_run, tmp_path):
+        """Test error when yt-dlp is not installed."""
+        mock_run.side_effect = FileNotFoundError("yt-dlp")
+
+        with pytest.raises(YouTubeDownloadError, match="yt-dlp not found"):
+            download_youtube_audio(
+                "https://youtube.com/watch?v=test",
+                tmp_path,
+                verbose=False,
+            )
+
+    @patch("subprocess.run")
+    def test_get_youtube_video_info_parses_json(self, mock_run, tmp_path):
+        """Test that get_youtube_video_info correctly parses video info."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"id": "abc123", "title": "Test Video", "webpage_url": "https://youtube.com/watch?v=abc123", "duration": 120}',
+            stderr="",
+        )
+
+        result = get_youtube_video_info("https://youtube.com/watch?v=abc123")
+
+        assert result["id"] == "abc123"
+        assert result["title"] == "Test Video"
+        assert result["url"] == "https://youtube.com/watch?v=abc123"
+        assert result["duration"] == 120
+
+    @patch("subprocess.run")
+    def test_get_youtube_video_info_raises_on_invalid_json(self, mock_run, tmp_path):
+        """Test error handling for invalid JSON response."""
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="not valid json", stderr=""
+        )
+
+        with pytest.raises(YouTubeDownloadError, match="Failed to parse video info"):
+            get_youtube_video_info("https://youtube.com/watch?v=test")
+
+    @patch("subprocess.run")
+    def test_download_creates_output_directory(self, mock_run, tmp_path):
+        """Test that download creates output directory if it doesn't exist."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        output_dir = tmp_path / "new" / "nested" / "dir"
+        audio_file = output_dir / "test_video.wav"
+        audio_file.parent.mkdir(parents=True)
+        audio_file.write_text("content")
+
+        download_youtube_audio(
+            "https://youtube.com/watch?v=test",
+            output_dir,
+            verbose=False,
+        )
+
+        assert output_dir.exists()
