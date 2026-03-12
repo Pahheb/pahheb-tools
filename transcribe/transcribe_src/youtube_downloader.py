@@ -72,13 +72,13 @@ def download_youtube_audio(
 
     if not new_files:
         if audio_files:
-            return audio_files[0]
+            return max(audio_files, key=lambda p: p.stat().st_mtime)
         raise YouTubeDownloadError("No audio file was downloaded")
 
     if verbose:
         print(f"Downloaded: {new_files[0]}")
 
-    return new_files[0]
+    return max(new_files, key=lambda p: p.stat().st_mtime)
 
 
 def get_youtube_video_info(

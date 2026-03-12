@@ -174,6 +174,10 @@ class TestYouTubeDownloader:
         existing_audio = tmp_path / "existing_video.wav"
         existing_audio.write_text("existing audio content")
 
+        import time
+
+        time.sleep(0.01)
+
         new_audio = tmp_path / "new_video_title_newvideo.wav"
         new_audio.write_text("new audio content")
 
