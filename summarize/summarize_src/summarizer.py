@@ -103,7 +103,7 @@ Remember: Preserve all factual information, names, dates, numbers, and technical
         prompt = self._build_prompt(text, summary_type)
 
         try:
-            with httpx.Client(timeout=120.0) as client:
+            with httpx.Client(timeout=300.0) as client:
                 response = client.post(
                     f"{self.base_url}/api/generate",
                     json={
@@ -149,6 +149,8 @@ Remember: Preserve all factual information, names, dates, numbers, and technical
 
         if points_part.startswith("KEYPOINTS:"):
             points_part = points_part[10:].strip()
+        elif points_part.startswith("KEY POINTS:"):
+            points_part = points_part[11:].strip()
 
         for line in points_part.split("\n"):
             line = line.strip()
@@ -158,9 +160,13 @@ Remember: Preserve all factual information, names, dates, numbers, and technical
                 point = line[1:].strip()
             elif line[0].isdigit() and "." in line:
                 point = line.split(".", 1)[1].strip()
+            elif line.startswith("*"):
+                point = line[1:].strip()
+            elif line.startswith("•"):
+                point = line[1:].strip()
             else:
                 continue
-            if point:
+            if point and len(point) > 3:
                 key_points.append(point)
 
         if not key_points and summary_part:
@@ -304,16 +310,24 @@ Remember: Preserve all factual information, names, dates, numbers, and technical
 
         if points_part.startswith("KEYPOINTS:"):
             points_part = points_part[10:].strip()
+        elif points_part.startswith("KEY POINTS:"):
+            points_part = points_part[11:].strip()
 
         for line in points_part.split("\n"):
             line = line.strip()
+            if not line:
+                continue
             if line.startswith("-"):
                 point = line[1:].strip()
             elif line and line[0].isdigit() and "." in line:
                 point = line.split(".", 1)[1].strip()
+            elif line.startswith("*"):
+                point = line[1:].strip()
+            elif line.startswith("•"):
+                point = line[1:].strip()
             else:
                 continue
-            if point:
+            if point and len(point) > 3:
                 key_points.append(point)
 
         if not key_points and summary_part:

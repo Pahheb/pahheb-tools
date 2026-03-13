@@ -24,6 +24,7 @@ def write_summary_txt(
     summary: str,
     output_path: Path,
     metadata: dict[str, Any] | None = None,
+    key_points: list[str] | None = None,
 ) -> Path:
     """Write summary as plain text file."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -39,6 +40,14 @@ def write_summary_txt(
         if "summary_type" in metadata:
             content_parts.append(f"Summary Type: {metadata['summary_type']}")
         content_parts.append("-" * 50)
+        content_parts.append("")
+
+    if key_points:
+        content_parts.append("KEY POINTS:")
+        for i, point in enumerate(key_points, 1):
+            content_parts.append(f"  {i}. {point}")
+        content_parts.append("")
+        content_parts.append("SUMMARY:")
         content_parts.append("")
 
     content_parts.append(summary)

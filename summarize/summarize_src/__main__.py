@@ -201,7 +201,7 @@ def summarize_file(
     }
 
     if config.output_format == "txt":
-        write_summary_txt(result.summary, output_path, metadata)
+        write_summary_txt(result.summary, output_path, metadata, result.key_points)
     elif config.output_format == "md":
         write_summary_md(
             result.summary,
@@ -260,7 +260,7 @@ def summarize_unified(
     }
 
     if config.output_format == "txt":
-        write_summary_txt(result.summary, output_path, metadata)
+        write_summary_txt(result.summary, output_path, metadata, result.key_points)
     elif config.output_format == "md":
         write_summary_md(
             result.summary,
@@ -319,7 +319,7 @@ def summarize_combined(
     }
 
     if config.output_format == "txt":
-        write_summary_txt(combined_text, output_path, metadata)
+        write_summary_txt(combined_text, output_path, metadata, key_points)
     elif config.output_format == "md":
         write_summary_md(
             combined_text,
