@@ -1,5 +1,6 @@
 """YouTube audio download using yt-dlp."""
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -119,8 +120,6 @@ def get_youtube_video_info(
 
         if result.returncode != 0:
             raise YouTubeDownloadError(f"yt-dlp failed: {result.stderr}")
-
-        import json
 
         info = json.loads(result.stdout)
 

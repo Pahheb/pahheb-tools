@@ -138,7 +138,6 @@ Remember: Preserve all factual information, names, dates, numbers, and technical
     def _parse_response(self, content: str) -> SummaryResult:
         """Parse the Ollama response into key points and summary."""
         key_points = []
-        summary = ""
 
         parts = content.split("SUMMARY:", 1)
         if len(parts) > 1:
@@ -153,6 +152,8 @@ Remember: Preserve all factual information, names, dates, numbers, and technical
 
         for line in points_part.split("\n"):
             line = line.strip()
+            if not line:
+                continue
             if line.startswith("-"):
                 point = line[1:].strip()
             elif line[0].isdigit() and "." in line:
@@ -166,7 +167,7 @@ Remember: Preserve all factual information, names, dates, numbers, and technical
             key_points = ["See summary for main points"]
 
         return SummaryResult(
-            summary=summary,
+            summary=summary_part,
             key_points=key_points,
             metadata={"provider": "ollama", "model": self.model},
         )
@@ -292,7 +293,6 @@ Remember: Preserve all factual information, names, dates, numbers, and technical
     def _parse_response(self, content: str) -> SummaryResult:
         """Parse the response into key points and summary."""
         key_points = []
-        summary = ""
 
         parts = content.split("SUMMARY:", 1)
         if len(parts) > 1:
@@ -320,7 +320,7 @@ Remember: Preserve all factual information, names, dates, numbers, and technical
             key_points = ["See summary for main points"]
 
         return SummaryResult(
-            summary=summary,
+            summary=summary_part,
             key_points=key_points,
             metadata={"provider": "huggingface", "model": self.model_name},
         )

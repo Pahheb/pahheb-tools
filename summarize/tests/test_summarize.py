@@ -323,6 +323,44 @@ class TestOllamaProvider:
         )
 
     @patch("httpx.Client")
+    def test_summarize_returns_summary_content(self, mock_client):
+        """Test that summarization actually returns the summary content (not empty)."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "response": "KEYPOINTS:\n- First key point\n- Second key point\n\nSUMMARY:\nThis is the actual summary text that should be returned."
+        }
+        mock_client.return_value.__enter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        provider = OllamaProvider()
+        result = provider.summarize("Test transcription text")
+
+        assert (
+            result.summary == "This is the actual summary text that should be returned."
+        )
+        assert "First key point" in result.key_points
+        assert "Second key point" in result.key_points
+
+    @patch("httpx.Client")
+    def test_summarize_no_keypoints_returns_summary(self, mock_client):
+        """Test parsing when response has no keypoints but has summary."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "response": "Here is a summary without keypoints section."
+        }
+        mock_client.return_value.__enter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        provider = OllamaProvider()
+        result = provider.summarize("Test text")
+
+        assert result.summary == "Here is a summary without keypoints section."
+
+    @patch("httpx.Client")
     def test_summarize_connection_error(self, mock_client):
         """Test summarization with connection error."""
         import httpx
@@ -359,7 +397,35 @@ class TestOllamaProvider:
 class TestHuggingFaceProvider:
     """Tests for HuggingFaceProvider."""
 
-    def test_is_available(self):
+    def test_parse_response_returns_summary(self):
+        """Test that _parse_response returns the actual summary content."""
+        provider = HuggingFaceProvider()
+        content = (
+            "KEYPOINTS:\n- Point 1\n\nSUMMARY:\nThis is the HuggingFace summary text."
+        )
+        result = provider._parse_response(content)
+
+        assert result.summary == "This is the HuggingFace summary text."
+        assert "Point 1" in result.key_points
+
+    def test_parse_response_no_keypoints(self):
+        """Test parsing when response has no keypoints but has summary."""
+        provider = HuggingFaceProvider()
+        content = "Here is a summary without keypoints."
+        result = provider._parse_response(content)
+
+        assert result.summary == "Here is a summary without keypoints."
+
+    def test_parse_response_with_numbered_points(self):
+        """Test parsing numbered list keypoints."""
+        provider = HuggingFaceProvider()
+        content = (
+            "KEYPOINTS:\n1. First point\n2. Second point\n\nSUMMARY:\nSummary text."
+        )
+        result = provider._parse_response(content)
+
+        assert "First point" in result.key_points
+        assert "Second point" in result.key_points
         """Test is_available checks for transformers."""
         import sys
         from unittest.mock import patch

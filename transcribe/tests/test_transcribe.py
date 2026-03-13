@@ -269,6 +269,24 @@ class TestYouTubeDownloader:
             get_youtube_video_info("https://youtube.com/watch?v=test")
 
     @patch("subprocess.run")
+    def test_get_youtube_video_info_json_import_available(self, mock_run, tmp_path):
+        """Test that json module is available for exception handling."""
+        import transcribe_src.youtube_downloader as youtube_dl
+
+        assert hasattr(youtube_dl, "json")
+        assert youtube_dl.json.__name__ == "json"
+
+    @patch("subprocess.run")
+    def test_get_youtube_video_info_handles_yt_dlp_error(self, mock_run, tmp_path):
+        """Test error handling when yt-dlp fails."""
+        mock_run.return_value = MagicMock(
+            returncode=1, stdout="", stderr="ERROR: Unable to extract video data"
+        )
+
+        with pytest.raises(YouTubeDownloadError, match="yt-dlp failed"):
+            get_youtube_video_info("https://youtube.com/watch?v=test")
+
+    @patch("subprocess.run")
     def test_download_creates_output_directory(self, mock_run, tmp_path):
         """Test that download creates output directory if it doesn't exist."""
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
