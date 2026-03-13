@@ -18,15 +18,18 @@ from .summarizer import (
 )
 
 
-def transcribe_file(file_path: Path, config: Config, verbose: bool = False) -> Path:
+def transcribe_file(
+    file_path: str | Path, config: Config, verbose: bool = False
+) -> Path:
     """Transcribe a video/audio file using the transcribe tool."""
     config.transcribe_output_dir.mkdir(parents=True, exist_ok=True)
 
-    transcribe_cmd = ["transcribe", str(file_path)]
+    input_str = str(file_path)
+    transcribe_cmd = ["transcribe", input_str]
     transcribe_cmd.extend(config.build_transcribe_args())
 
     if verbose:
-        print(f"Transcribing: {file_path}")
+        print(f"Transcribing: {input_str}")
         print(f"Transcribe output dir: {config.transcribe_output_dir}")
 
     try:
@@ -40,13 +43,18 @@ def transcribe_file(file_path: Path, config: Config, verbose: bool = False) -> P
         if verbose:
             print(result.stdout)
 
-        txt_file = config.transcribe_output_dir / f"{file_path.stem}.txt"
+        if isinstance(file_path, Path):
+            stem = file_path.stem
+        else:
+            stem = file_path.split("/")[-1].split("\\")[-1]
+            if "?" in stem:
+                stem = stem.split("?")[0]
+
+        txt_file = config.transcribe_output_dir / f"{stem}.txt"
         if txt_file.exists():
             return txt_file
 
-        matching_files = list(
-            config.transcribe_output_dir.glob(f"{file_path.stem}*.txt")
-        )
+        matching_files = list(config.transcribe_output_dir.glob(f"{stem}*.txt"))
         if matching_files:
             return max(matching_files, key=lambda p: p.stat().st_mtime)
 
@@ -357,7 +365,14 @@ def main():
 
         if config.transcribe_first:
             for file_path in config.input_files:
-                txt_path = config.transcribe_output_dir / f"{file_path.stem}.txt"
+                if isinstance(file_path, Path):
+                    stem = file_path.stem
+                else:
+                    stem = file_path.split("/")[-1].split("\\")[-1]
+                    if "?" in stem:
+                        stem = stem.split("?")[0]
+
+                txt_path = config.transcribe_output_dir / f"{stem}.txt"
                 if txt_path.exists():
                     if config.verbose:
                         print(f"Using existing transcription: {txt_path}")

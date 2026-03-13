@@ -216,17 +216,16 @@ Examples:
 
     args.input_files = []
     for input_path in args.input:
-        path = Path(input_path)
         is_url = input_path.startswith(
             ("http://", "https://", "youtube.com", "youtu.be")
         )
 
         if is_url and args.transcribe and args.transcribe_source == "youtube":
-            args.input_files.append(path)
-        elif path.exists():
-            args.input_files.append(path)
+            args.input_files.append(input_path)  # Keep URL as string
+        elif Path(input_path).exists():
+            args.input_files.append(Path(input_path))
         elif args.transcribe and args.transcribe_source == "youtube":
-            args.input_files.append(path)
+            args.input_files.append(input_path)  # Keep URL as string
         else:
             print(
                 f"Warning: Input file not found: {input_path}",

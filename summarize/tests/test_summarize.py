@@ -564,6 +564,43 @@ class TestCLI:
         assert args.transcribe_source == "youtube"
         assert args.transcribe_language == "en"
 
+    def test_parse_args_youtube_url_kept_as_string(self):
+        """Test that YouTube URLs are kept as strings, not converted to Path objects."""
+        from summarize_src.cli import parse_args
+
+        youtube_urls = [
+            "https://youtube.com/watch?v=abc123",
+            "https://www.youtube.com/watch?v=abc123",
+            "https://youtu.be/abc123",
+            "http://youtube.com/watch?v=abc123",
+        ]
+
+        for url in youtube_urls:
+            with patch(
+                "sys.argv",
+                [
+                    "summarize",
+                    "--transcribe",
+                    "--transcribe-source",
+                    "youtube",
+                    url,
+                ],
+            ):
+                args = parse_args()
+
+            assert args.transcribe is True
+            assert len(args.input_files) == 1
+            assert isinstance(args.input_files[0], str), (
+                f"URL should be string, got {type(args.input_files[0])}"
+            )
+            assert args.input_files[0] == url, f"URL should be preserved exactly: {url}"
+            assert args.input_files[0].startswith("http"), (
+                f"URL should not have slashes stripped: {args.input_files[0]}"
+            )
+            assert (
+                "https://" in args.input_files[0] or "http://" in args.input_files[0]
+            ), f"URL should have full protocol: {args.input_files[0]}"
+
     def test_parse_args_with_transcribe_all_options(self, tmp_path):
         """Test parsing with all transcribe options."""
         from summarize_src.cli import parse_args

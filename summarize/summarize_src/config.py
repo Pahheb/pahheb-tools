@@ -99,16 +99,29 @@ class Config:
         """Find any combined*.txt files in input files."""
         combined = []
         for f in self.input_files:
-            if "combined" in f.stem.lower() and f.suffix == ".txt":
-                combined.append(f)
+            if isinstance(f, str):
+                stem = f.split("/")[-1].split("\\")[-1]
+                if "?" in stem:
+                    stem = stem.split("?")[0]
+                if "combined" in stem.lower() and f.endswith(".txt"):
+                    combined.append(f)
+            else:
+                if "combined" in f.stem.lower() and f.suffix == ".txt":
+                    combined.append(f)
         return combined
 
     def filter_input_files(self) -> list[Path]:
         """Filter input files based on skip_combined setting."""
         if self.skip_combined:
-            return [
-                f
-                for f in self.input_files
-                if not ("combined" in f.stem.lower() and f.suffix == ".txt")
-            ]
+            result = []
+            for f in self.input_files:
+                if isinstance(f, str):
+                    stem = f.split("/")[-1].split("\\")[-1]
+                    if "?" in stem:
+                        stem = stem.split("?")[0]
+                else:
+                    stem = f.stem.lower()
+                if "combined" not in stem:
+                    result.append(f)
+            return result
         return self.input_files
