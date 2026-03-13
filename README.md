@@ -6,8 +6,8 @@ A collection of tools developed by [Pahheb](https://github.com/Pahheb).
 
 This repository contains a variety of utilities, including but not limited to:
 
-- **YouTube Transcriber**: Transcribe YouTube videos using official transcripts or local Whisper. See [YouTube Transcriber Documentation](docs/yt-transcriber.md).
-- **Video/Audio Transcriber**: Transcribe local video and audio files. See [Transcribe Documentation](docs/transcribe.md).
+- **Transcribe**: Transcribe local video/audio files and YouTube videos. See [Transcribe Documentation](docs/transcribe.md) or [transcribe/README.md](transcribe/README.md).
+- **Summarize**: Summarize video/audio transcriptions using AI. See [Summarize Documentation](docs/summarize.md) or [summarize/README.md](summarize/README.md).
 - **PDF Merge**: Merge multiple PDF files into one.
 - **PDF Text Extractor**: Extract text from PDF files.
 - **Handwriting to Text**: Convert handwriting into text.

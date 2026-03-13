@@ -1,0 +1,43 @@
+name: Summarize Tests
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'summarize/**'
+      - '.github/workflows/summarize.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'summarize/**'
+      - '.github/workflows/summarize.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+      
+      - name: Set up virtual environment
+        working-directory: summarize
+        run: uv venv --python 3.12 .venv
+      
+      - name: Install dependencies
+        working-directory: summarize
+        run: |
+          uv pip install -e . --python .venv/bin/python
+          uv pip install pytest pytest-asyncio --python .venv/bin/python
+      
+      - name: Run tests
+        working-directory: summarize
+        run: .venv/bin/python -m pytest -v
