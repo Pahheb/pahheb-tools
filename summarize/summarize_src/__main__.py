@@ -131,13 +131,31 @@ def read_transcription(file_path: Path) -> str:
     transcript_lines = []
     in_transcript = False
 
+    metadata_prefixes = (
+        "source:",
+        "video_id:",
+        "video_title:",
+        "url:",
+        "model:",
+        "language:",
+        "duration:",
+    )
+
     for line in lines:
-        if "---" in line and in_transcript:
-            break
+        line_lower = line.lower().strip()
+        stripped = line.strip()
+
+        if stripped.startswith("---") and stripped.endswith("---"):
+            if in_transcript:
+                break
+            in_transcript = True
+            continue
         if in_transcript:
             transcript_lines.append(line)
-        elif line.strip() and not any(
-            k in line.lower()
+        elif stripped.startswith(metadata_prefixes):
+            continue
+        elif stripped and not any(
+            k in line_lower
             for k in ["video", "title", "language", "source", "duration"]
         ):
             in_transcript = True
