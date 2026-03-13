@@ -818,3 +818,95 @@ class TestTranscribeIntegration:
         assert "--model" in transcribe_args
         assert "--language" in transcribe_args
         assert "--srt" in transcribe_args
+
+
+class TestVideoIdExtraction:
+    """Tests for video ID extraction from YouTube URLs."""
+
+    def test_extract_video_id_standard_url(self):
+        """Test extracting video ID from standard YouTube URL."""
+        from summarize_src.__main__ import extract_video_id
+
+        assert (
+            extract_video_id("https://www.youtube.com/watch?v=Qfo6xdVMFmM")
+            == "Qfo6xdVMFmM"
+        )
+        assert (
+            extract_video_id("http://youtube.com/watch?v=Qfo6xdVMFmM") == "Qfo6xdVMFmM"
+        )
+
+    def test_extract_video_id_short_url(self):
+        """Test extracting video ID from youtu.be URL."""
+        from summarize_src.__main__ import extract_video_id
+
+        assert extract_video_id("https://youtu.be/Qfo6xdVMFmM") == "Qfo6xdVMFmM"
+        assert extract_video_id("http://youtu.be/Qfo6xdVMFmM") == "Qfo6xdVMFmM"
+
+    def test_extract_video_id_shorts_url(self):
+        """Test extracting video ID from YouTube Shorts URL."""
+        from summarize_src.__main__ import extract_video_id
+
+        assert (
+            extract_video_id("https://www.youtube.com/shorts/Qfo6xdVMFmM")
+            == "Qfo6xdVMFmM"
+        )
+
+    def test_extract_video_id_video_id_only(self):
+        """Test extracting video ID when only ID is provided."""
+        from summarize_src.__main__ import extract_video_id
+
+        assert extract_video_id("Qfo6xdVMFmM") == "Qfo6xdVMFmM"
+
+    def test_extract_video_id_invalid(self):
+        """Test extracting video ID from invalid URL."""
+        from summarize_src.__main__ import extract_video_id
+
+        assert extract_video_id("https://example.com/video") is None
+        assert extract_video_id("not-a-url") is None
+
+    def test_find_transcription_file_by_video_id(self, tmp_path):
+        """Test finding transcription file by YouTube video ID."""
+        from summarize_src.__main__ import find_transcription_file
+
+        transcribe_dir = tmp_path / "transcriptions"
+        transcribe_dir.mkdir()
+
+        test_file = (
+            transcribe_dir
+            / "Qfo6xdVMFmM_Google Just Doubled Down On Killing Android.txt"
+        )
+        test_file.write_text("transcript content")
+
+        result = find_transcription_file(
+            "https://www.youtube.com/watch?v=Qfo6xdVMFmM", transcribe_dir
+        )
+        assert result is not None
+        assert (
+            result.name == "Qfo6xdVMFmM_Google Just Doubled Down On Killing Android.txt"
+        )
+
+    def test_find_transcription_file_by_stem(self, tmp_path):
+        """Test finding transcription file by file stem."""
+        from summarize_src.__main__ import find_transcription_file
+
+        transcribe_dir = tmp_path / "transcriptions"
+        transcribe_dir.mkdir()
+
+        test_file = transcribe_dir / "myvideo.txt"
+        test_file.write_text("transcript content")
+
+        result = find_transcription_file("myvideo.txt", transcribe_dir)
+        assert result is not None
+        assert result.name == "myvideo.txt"
+
+    def test_find_transcription_file_not_found(self, tmp_path):
+        """Test finding transcription file when it doesn't exist."""
+        from summarize_src.__main__ import find_transcription_file
+
+        transcribe_dir = tmp_path / "transcriptions"
+        transcribe_dir.mkdir()
+
+        result = find_transcription_file(
+            "https://www.youtube.com/watch?v=NonExistent", transcribe_dir
+        )
+        assert result is None

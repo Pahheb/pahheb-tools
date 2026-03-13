@@ -1,5 +1,6 @@
 """CLI entry point for summarize tool."""
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -16,6 +17,64 @@ from .summarizer import (
     get_provider,
     SummarizerError,
 )
+
+
+def extract_video_id(url: str) -> str | None:
+    """Extract YouTube video ID from various URL formats."""
+    patterns = [
+        r"(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)([a-zA-Z0-9_-]{11})",
+        r"^([a-zA-Z0-9_-]{11})$",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    return None
+
+
+def find_transcription_file(
+    file_path: str | Path, transcribe_output_dir: Path
+) -> Path | None:
+    """Find an existing transcription file for a given input path/URL."""
+    if isinstance(file_path, Path):
+        stem = file_path.stem
+        txt_path = transcribe_output_dir / f"{stem}.txt"
+        if txt_path.exists():
+            return txt_path
+        matching = list(transcribe_output_dir.glob(f"{stem}*.txt"))
+        if matching:
+            return max(matching, key=lambda p: p.stat().st_mtime)
+    else:
+        video_id = extract_video_id(file_path)
+        if video_id:
+            matching = list(transcribe_output_dir.glob(f"{video_id}*.txt"))
+            if matching:
+                return max(matching, key=lambda p: p.stat().st_mtime)
+
+        stem = file_path.split("/")[-1].split("\\")[-1]
+        if "?" in stem:
+            stem = stem.split("?")[0]
+
+        if not stem.endswith(".txt"):
+            txt_path = transcribe_output_dir / f"{stem}.txt"
+            if txt_path.exists():
+                return txt_path
+
+        matching = list(transcribe_output_dir.glob(f"{stem}*.txt"))
+        if matching:
+            return max(matching, key=lambda p: p.stat().st_mtime)
+
+        if "." in stem:
+            base_stem = stem.rsplit(".", 1)[0]
+            txt_path = transcribe_output_dir / f"{base_stem}.txt"
+            if txt_path.exists():
+                return txt_path
+            matching = list(transcribe_output_dir.glob(f"{base_stem}*.txt"))
+            if matching:
+                return max(matching, key=lambda p: p.stat().st_mtime)
+
+    return None
 
 
 def transcribe_file(
@@ -365,15 +424,10 @@ def main():
 
         if config.transcribe_first:
             for file_path in config.input_files:
-                if isinstance(file_path, Path):
-                    stem = file_path.stem
-                else:
-                    stem = file_path.split("/")[-1].split("\\")[-1]
-                    if "?" in stem:
-                        stem = stem.split("?")[0]
-
-                txt_path = config.transcribe_output_dir / f"{stem}.txt"
-                if txt_path.exists():
+                txt_path = find_transcription_file(
+                    file_path, config.transcribe_output_dir
+                )
+                if txt_path:
                     if config.verbose:
                         print(f"Using existing transcription: {txt_path}")
                     processed_files.append(txt_path)
