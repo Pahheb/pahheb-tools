@@ -2,13 +2,10 @@
 
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 
 class AudioProcessingError(Exception):
     """Raised when audio processing fails."""
-
-    pass
 
 
 def check_ffmpeg_arnndn_support() -> bool:
@@ -26,7 +23,7 @@ def check_ffmpeg_arnndn_support() -> bool:
         return False
 
 
-def find_denoise_model(search_paths: list[Path]) -> Optional[Path]:
+def find_denoise_model(search_paths: list[Path]) -> Path | None:
     """Search for RNNoise model file in given paths."""
     model_names = ["std.rnnn", "model.rnnn"]
 
@@ -57,7 +54,7 @@ def process_audio(
     input_path: Path,
     work_dir: Path,
     denoise: bool = False,
-    denoise_model: Optional[str] = None,
+    denoise_model: str | None = None,
     audio_enhance: bool = False,
     verbose: bool = False,
 ) -> Path:

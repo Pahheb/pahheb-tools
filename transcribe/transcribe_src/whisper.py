@@ -1,7 +1,8 @@
 """Whisper transcription with AMD GPU / ROCm support."""
 
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator, Optional
+from typing import Any
 
 import torch
 from faster_whisper import WhisperModel
@@ -30,7 +31,7 @@ def get_device() -> str:
         return "cpu"
 
 
-def get_compute_type(device: str, compute_type: Optional[str] = None) -> str:
+def get_compute_type(device: str, compute_type: str | None = None) -> str:
     """Get compute type based on device."""
     if compute_type:
         return compute_type
@@ -49,8 +50,8 @@ class WhisperTranscriber:
         self,
         model_size: str = "small",
         device: str = "auto",
-        compute_type: Optional[str] = None,
-        language: Optional[str] = None,
+        compute_type: str | None = None,
+        language: str | None = None,
         verbose: bool = False,
     ):
         """
@@ -123,9 +124,9 @@ class WhisperTranscriber:
 def transcribe_audio(
     audio_path: Path,
     model_size: str = "small",
-    language: Optional[str] = None,
+    language: str | None = None,
     device: str = "auto",
-    compute_type: Optional[str] = None,
+    compute_type: str | None = None,
     vad_filter: bool = False,
     verbose: bool = False,
 ) -> list[dict]:

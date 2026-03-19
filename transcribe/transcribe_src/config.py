@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 
 @dataclass
@@ -13,13 +12,13 @@ class Config:
     input_path: str
     output_dir: Path = field(default_factory=lambda: Path("./transcriptions"))
 
-    language: Optional[str] = None
+    language: str | None = None
     model_size: str = "small"
     device: str = "auto"
-    compute_type: Optional[str] = None
+    compute_type: str | None = None
 
     denoise: bool = False
-    denoise_model: Optional[str] = None
+    denoise_model: str | None = None
     vad: bool = False
     audio_enhance: bool = False
     srt: bool = False
@@ -34,7 +33,9 @@ class Config:
             self.output_dir = Path(self.output_dir)
 
         if self.source not in ("local", "youtube"):
-            raise ValueError(f"Invalid source: {self.source}. Must be 'local' or 'youtube'")
+            raise ValueError(
+                f"Invalid source: {self.source}. Must be 'local' or 'youtube'"
+            )
 
         valid_models = {"tiny", "base", "small", "medium", "large-v3"}
         if self.model_size not in valid_models:
