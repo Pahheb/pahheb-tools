@@ -107,27 +107,60 @@ class TestYouTubePipelineResilience:
         out_dir = tmp_path / "out"
         out_dir.mkdir()
 
-        stderr_capture = StringIO()
-        with patch.object(sys, "stderr", stderr_capture):
-            with patch(
-                "sys.argv",
-                [
-                    "transcribe",
-                    "not-a-valid-url",
-                    "--source",
-                    "youtube",
-                    "-o",
-                    str(out_dir),
-                ],
-            ):
-                with pytest.raises(SystemExit) as exc_info:
-                    main()
+        with patch(
+            "transcribe_src.youtube_processor.get_youtube_video_info"
+        ) as mock_info:
+            mock_info.side_effect = RuntimeError("Invalid YouTube URL")
+
+            stderr_capture = StringIO()
+            with patch.object(sys, "stderr", stderr_capture):
+                with patch(
+                    "sys.argv",
+                    [
+                        "transcribe",
+                        "not-a-valid-url",
+                        "--source",
+                        "youtube",
+                        "-o",
+                        str(out_dir),
+                    ],
+                ):
+                    with pytest.raises(SystemExit) as exc_info:
+                        main()
 
         assert exc_info.value.code == 1
         err = stderr_capture.getvalue()
-        # On systems without yt-dlp, the error is "yt-dlp not found"
-        # On systems with yt-dlp, the error is about invalid URL
-        assert any(kw in err.lower() for kw in ["invalid", "url", "yt-dlp not found"])
+        assert "invalid" in err.lower() or "url" in err.lower()
+
+    def test_youtube_no_yt_dlp_exits_with_error(self, tmp_path: Path) -> None:
+        """Test that missing yt-dlp causes a clean exit."""
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+
+        with patch(
+            "transcribe_src.youtube_processor.get_youtube_video_info"
+        ) as mock_info:
+            mock_info.side_effect = RuntimeError("yt-dlp not found")
+
+            stderr_capture = StringIO()
+            with patch.object(sys, "stderr", stderr_capture):
+                with patch(
+                    "sys.argv",
+                    [
+                        "transcribe",
+                        "https://youtube.com/watch?v=test",
+                        "--source",
+                        "youtube",
+                        "-o",
+                        str(out_dir),
+                    ],
+                ):
+                    with pytest.raises(SystemExit) as exc_info:
+                        main()
+
+        assert exc_info.value.code == 1
+        err = stderr_capture.getvalue()
+        assert "yt-dlp" in err.lower()
 
     def test_youtube_download_failure_exits_with_error(self, tmp_path: Path) -> None:
         """Test that a failed YouTube download causes a clean exit."""
