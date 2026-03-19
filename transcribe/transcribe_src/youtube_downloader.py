@@ -8,8 +8,6 @@ from pathlib import Path
 class YouTubeDownloadError(Exception):
     """Raised when YouTube download fails."""
 
-    pass
-
 
 def download_youtube_audio(
     url: str,
@@ -131,6 +129,10 @@ def get_youtube_video_info(
         }
 
     except subprocess.TimeoutExpired:
-        raise YouTubeDownloadError("Info retrieval timed out")
+        raise YouTubeDownloadError("Info retrieval timed out") from None
+    except FileNotFoundError:
+        raise YouTubeDownloadError(
+            "yt-dlp not found. Install with: pip install yt-dlp"
+        ) from None
     except json.JSONDecodeError as e:
-        raise YouTubeDownloadError(f"Failed to parse video info: {e}")
+        raise YouTubeDownloadError(f"Failed to parse video info: {e}") from None
