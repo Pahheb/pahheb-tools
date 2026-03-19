@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 
 @dataclass
@@ -20,12 +19,13 @@ class Config:
     skip_combined: bool = False
     transcribe_first: bool = False
     verbose: bool = False
+    single_threaded: bool = False
 
     transcribe_source: str = "local"
-    transcribe_language: Optional[str] = None
+    transcribe_language: str | None = None
     transcribe_model: str = "small"
     transcribe_device: str = "auto"
-    transcribe_compute: Optional[str] = None
+    transcribe_compute: str | None = None
     transcribe_denoise: bool = False
     transcribe_vad: bool = False
     transcribe_audio_enhance: bool = False
