@@ -1,14 +1,16 @@
-name: Transcribe Tests
+name: CI
 
 on:
   push:
     branches: [main, master]
     paths:
+      - 'summarize/**'
       - 'transcribe/**'
       - '.github/workflows/test.yml'
   pull_request:
     branches: [main, master]
     paths:
+      - 'summarize/**'
       - 'transcribe/**'
       - '.github/workflows/test.yml'
 
@@ -20,31 +22,98 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  detect-changes:
     runs-on: ubuntu-latest
-    
+    outputs:
+      summarize: ${{ steps.changes.outputs.summarize }}
+      transcribe: ${{ steps.changes.outputs.transcribe }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            summarize:
+              - 'summarize/**'
+            transcribe:
+              - 'transcribe/**'
+
+  summarize:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.summarize == 'true' || github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: summarize
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-      
-      - name: Set up virtual environment
-        working-directory: transcribe
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Create venv
         run: uv venv --python 3.12 .venv
-      
+
       - name: Install dependencies
-        working-directory: transcribe
         run: |
           uv pip install -e . --python .venv/bin/python
-          uv pip install pytest pytest-asyncio --python .venv/bin/python
-      
-      - name: Run tests
+          uv pip install pytest pytest-asyncio pytest-cov ruff mypy --python .venv/bin/python
+
+      - name: Ruff check
+        run: .venv/bin/ruff check .
+
+      - name: Ruff format check
+        run: .venv/bin/ruff format --check .
+
+      - name: MyPy
+        run: .venv/bin/python -m mypy summarize_src/ --config-file mypy.ini
+
+      - name: Ty type check
+        continue-on-error: true
+        run: uvx ty check --project summarize
+
+      - name: Tests with coverage
+        run: .venv/bin/python -m pytest -v --cov=summarize_src --cov-report=term-missing --cov-report=xml
+
+  transcribe:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.transcribe == 'true' || github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
         working-directory: transcribe
-        run: .venv/bin/python -m pytest -v
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Create venv
+        run: uv venv --python 3.12 .venv
+
+      - name: Install dependencies
+        run: |
+          uv pip install -e . --python .venv/bin/python
+          uv pip install pytest pytest-asyncio pytest-cov ruff mypy --python .venv/bin/python
+
+      - name: Ruff check
+        run: .venv/bin/ruff check .
+
+      - name: Ruff format check
+        run: .venv/bin/ruff format --check .
+
+      - name: MyPy
+        run: .venv/bin/python -m mypy transcribe_src/ --config-file mypy.ini
+
+      - name: Ty type check
+        continue-on-error: true
+        run: uvx ty check --project transcribe
+
+      - name: Tests with coverage
+        run: .venv/bin/python -m pytest -v --cov=transcribe_src --cov-report=term-missing --cov-report=xml
