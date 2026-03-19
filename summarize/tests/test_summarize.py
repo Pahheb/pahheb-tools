@@ -1,22 +1,22 @@
 """Tests for summarize tool."""
 
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from summarize_src.config import Config
 from summarize_src.file_writer import (
     sanitize_filename,
-    write_summary_txt,
-    write_summary_md,
     write_summary_json,
+    write_summary_md,
+    write_summary_txt,
 )
 from summarize_src.summarizer import (
-    OllamaProvider,
     HuggingFaceProvider,
-    get_provider,
+    OllamaProvider,
     ProviderNotAvailableError,
-    SummarizerError,
+    get_provider,
 )
 
 
@@ -244,7 +244,7 @@ class TestFileWriter:
         output_path = tmp_path / "test.txt"
         metadata = {"source": "test.txt", "title": "Test File"}
 
-        result = write_summary_txt(summary, output_path, metadata)
+        write_summary_txt(summary, output_path, metadata)
 
         content = output_path.read_text()
         assert "Source: test.txt" in content
@@ -541,9 +541,10 @@ class TestCLI:
 
     def test_parse_args_with_transcribe_youtube(self):
         """Test parsing with transcribe flag and youtube source."""
-        from summarize_src.cli import parse_args
-        from unittest.mock import patch
         import sys
+        from unittest.mock import patch
+
+        from summarize_src.cli import parse_args
 
         with patch.object(
             sys,
@@ -690,26 +691,26 @@ class TestCLI:
 
     def test_parse_args_nonexistent_file(self, capsys):
         """Test parsing with nonexistent file shows warning."""
-        from summarize_src.cli import parse_args
-        import sys
         from pathlib import Path
         from unittest.mock import patch
+
+        from summarize_src.cli import parse_args
 
         nonexistent = Path("/nonexistent/file.txt")
 
         with patch("sys.argv", ["summarize", str(nonexistent)]):
             try:
-                args = parse_args()
+                parse_args()
             except SystemExit:
                 pass
-            captured = capsys.readouterr()
-            assert "Warning" in captured.err or "not found" in captured.err.lower()
+        captured = capsys.readouterr()
+        assert "Warning" in captured.err or "not found" in captured.err.lower()
 
     def test_parse_args_no_inputs_shows_help(self, capsys):
         """Test that running with no inputs shows help instead of error."""
-        from summarize_src.cli import parse_args
-        import sys
         from unittest.mock import patch
+
+        from summarize_src.cli import parse_args
 
         with patch("sys.argv", ["summarize"]):
             try:
@@ -910,3 +911,276 @@ class TestVideoIdExtraction:
             "https://www.youtube.com/watch?v=NonExistent", transcribe_dir
         )
         assert result is None
+
+
+class TestSanitizeFilenameEdgeCases:
+    """Tests for sanitize_filename edge cases."""
+
+    def test_sanitize_empty_string(self):
+        """Test that empty string returns 'unnamed'."""
+        assert sanitize_filename("") == "unnamed"
+
+    def test_sanitize_only_dots(self):
+        """Test that only dots returns 'unnamed'."""
+        assert sanitize_filename("...") == "unnamed"
+
+    def test_sanitize_trailing_dots_spaces(self):
+        """Test trailing dots and spaces are stripped."""
+        assert sanitize_filename("  file.txt...  ") == "file.txt"
+
+    def test_sanitize_unicode_characters(self):
+        """Test unicode characters are preserved."""
+        assert sanitize_filename("résumé.pdf") == "résumé.pdf"
+
+    def test_sanitize_exact_max_length(self):
+        """Test string exactly at max_length is unchanged."""
+        assert sanitize_filename("abcdefghij", max_length=10) == "abcdefghij"
+
+
+class TestFileWriterEdgeCases:
+    """Tests for file writer edge cases."""
+
+    def test_write_summary_txt_no_metadata(self, tmp_path):
+        """Test writing TXT without metadata."""
+        output_path = tmp_path / "no_meta.txt"
+        write_summary_txt("Just a summary.", output_path)
+        content = output_path.read_text()
+        assert "Source:" not in content
+        assert "Just a summary." in content
+
+    def test_write_summary_txt_no_key_points(self, tmp_path):
+        """Test writing TXT without key points."""
+        output_path = tmp_path / "no_kp.txt"
+        write_summary_txt("Summary text.", output_path, metadata={"source": "test"})
+        content = output_path.read_text()
+        assert "KEY POINTS:" not in content
+        assert "Summary text." in content
+
+    def test_write_summary_md_no_metadata(self, tmp_path):
+        """Test writing MD without metadata."""
+        output_path = tmp_path / "no_meta.md"
+        write_summary_md("Just a summary.", output_path)
+        content = output_path.read_text()
+        # No metadata section means no Source/Title lines
+        assert "**Source:**" not in content
+        assert "Just a summary." in content
+
+    def test_write_summary_md_no_key_points(self, tmp_path):
+        """Test writing MD without key points."""
+        output_path = tmp_path / "no_kp.md"
+        write_summary_md("Summary text.", output_path)
+        content = output_path.read_text()
+        assert "## Key Points" not in content
+        assert "Summary text." in content
+
+    def test_write_summary_json_no_metadata(self, tmp_path):
+        """Test writing JSON without metadata."""
+        output_path = tmp_path / "no_meta.json"
+        write_summary_json("Summary.", output_path)
+        content = output_path.read_text()
+        assert '"metadata"' not in content
+        assert '"summary"' in content
+
+    def test_write_summary_json_no_key_points(self, tmp_path):
+        """Test writing JSON without key points."""
+        output_path = tmp_path / "no_kp.json"
+        write_summary_json("Summary.", output_path)
+        content = output_path.read_text()
+        assert '"key_points"' not in content
+
+
+class TestOllamaProviderEdgeCases:
+    """Tests for OllamaProvider edge cases."""
+
+    @patch("httpx.Client")
+    def test_is_available_returns_false_on_non_200(self, mock_client):
+        """Test is_available returns False on non-200 status."""
+        mock_response = MagicMock()
+        mock_response.status_code = 503
+        mock_client.return_value.__enter__.return_value.get.return_value = mock_response
+
+        provider = OllamaProvider()
+        assert provider.is_available() is False
+
+    @patch("httpx.Client")
+    def test_summarize_non_200_raises_summarizer_error(self, mock_client):
+        """Test that non-200 API response raises SummarizerError."""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "Internal Server Error"
+        mock_client.return_value.__enter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        provider = OllamaProvider()
+        from summarize_src.summarizer import SummarizerError
+
+        with pytest.raises(SummarizerError, match="Ollama API error"):
+            provider.summarize("Test text")
+
+    @patch("httpx.Client")
+    def test_summarize_timeout_raises_summarizer_error(self, mock_client):
+        """Test that httpx.TimeoutException raises SummarizerError."""
+        import httpx
+
+        mock_client.return_value.__enter__.return_value.post.side_effect = (
+            httpx.TimeoutException("Connection timed out")
+        )
+
+        provider = OllamaProvider()
+        from summarize_src.summarizer import SummarizerError
+
+        with pytest.raises(SummarizerError, match="timed out"):
+            provider.summarize("Test text")
+
+    def test_parse_response_star_bullet_points(self):
+        """Test parsing response with * bullet points."""
+        provider = OllamaProvider()
+        content = "KEYPOINTS:\n* First point\n* Second point\n\nSUMMARY:\nSummary text."
+        result = provider._parse_response(content)
+
+        assert "First point" in result.key_points
+        assert "Second point" in result.key_points
+
+    def test_parse_response_dot_bullet_points(self):
+        """Test parsing response with • bullet points."""
+        provider = OllamaProvider()
+        content = (
+            "KEYPOINTS:\n• First dot point\n• Second dot point\n\nSUMMARY:\nSummary."
+        )
+        result = provider._parse_response(content)
+
+        assert "First dot point" in result.key_points
+        assert "Second dot point" in result.key_points
+
+    def test_parse_response_key_points_with_space(self):
+        """Test parsing KEY POINTS: (with space) prefix."""
+        provider = OllamaProvider()
+        content = "KEY POINTS:\n- Point one\n- Point two\n\nSUMMARY:\nSummary text."
+        result = provider._parse_response(content)
+
+        assert "Point one" in result.key_points
+        assert "Point two" in result.key_points
+
+    def test_parse_response_short_points_filtered_out(self):
+        """Test that points <= 3 characters are filtered out."""
+        provider = OllamaProvider()
+        content = (
+            "KEYPOINTS:\n- OK\n- Abc\n- Yes this is long enough\n\nSUMMARY:\nText."
+        )
+        result = provider._parse_response(content)
+
+        assert "OK" not in result.key_points
+        assert "Abc" not in result.key_points
+        assert "Yes this is long enough" in result.key_points
+
+    def test_build_prompt_unknown_summary_type_fallback(self):
+        """Test that unknown summary_type falls back to default prompt."""
+        provider = OllamaProvider()
+        prompt = provider._build_prompt("test text", "unknown_type")
+        assert "comprehensive summary" in prompt.lower()
+
+
+class TestWatsonxProvider:
+    """Tests for WatsonxProvider."""
+
+    def test_is_available_with_credentials(self):
+        """Test is_available returns True when credentials are set."""
+        from summarize_src.summarizer import WatsonxProvider
+
+        provider = WatsonxProvider(api_key="key123", project_id="proj456")
+        assert provider.is_available() is True
+
+    def test_is_available_without_credentials(self):
+        """Test is_available returns False when credentials are missing."""
+        from summarize_src.summarizer import WatsonxProvider
+
+        provider = WatsonxProvider()
+        assert provider.is_available() is False
+
+    def test_summarize_without_credentials_raises(self):
+        """Test summarize raises ProviderNotAvailableError without credentials."""
+        from summarize_src.summarizer import ProviderNotAvailableError, WatsonxProvider
+
+        provider = WatsonxProvider()
+        with pytest.raises(ProviderNotAvailableError, match="credentials"):
+            provider.summarize("Test text")
+
+
+class TestReadTranscription:
+    """Tests for read_transcription function."""
+
+    def test_read_with_metadata_header(self, tmp_path):
+        """Test reading a file with metadata header and --- delimiters."""
+        from summarize_src.__main__ import read_transcription
+
+        txt = tmp_path / "meta.txt"
+        txt.write_text(
+            "source: youtube\nvideo_id: abc123\nmodel: small\n"
+            "---\n"
+            "This is the actual transcript.\n"
+            "---\n"
+        )
+        result = read_transcription(txt)
+        assert "This is the actual transcript." in result
+        assert "source: youtube" not in result
+
+    def test_read_only_metadata_no_transcript(self, tmp_path):
+        """Test reading a file with only metadata falls back to full content."""
+        from summarize_src.__main__ import read_transcription
+
+        txt = tmp_path / "meta_only.txt"
+        txt.write_text("source: youtube\nvideo_id: abc123\nmodel: small\n")
+        result = read_transcription(txt)
+        # Falls back to content since no transcript found
+        assert "source: youtube" in result
+
+    def test_read_with_string_path(self, tmp_path):
+        """Test reading with string path (not Path object)."""
+        from summarize_src.__main__ import read_transcription
+
+        txt = tmp_path / "string_path.txt"
+        txt.write_text("Hello world transcript.")
+        result = read_transcription(str(txt))
+        assert result == "Hello world transcript."
+
+    def test_read_empty_file(self, tmp_path):
+        """Test reading an empty file."""
+        from summarize_src.__main__ import read_transcription
+
+        txt = tmp_path / "empty.txt"
+        txt.write_text("")
+        result = read_transcription(txt)
+        assert result == ""
+
+
+class TestFindTranscriptionEdgeCases:
+    """Tests for find_transcription_file edge cases."""
+
+    def test_find_with_question_mark_in_url(self, tmp_path):
+        """Test finding file when URL stem has query params."""
+        from summarize_src.__main__ import find_transcription_file
+
+        transcribe_dir = tmp_path / "transcriptions"
+        transcribe_dir.mkdir()
+        test_file = transcribe_dir / "myvideo.txt"
+        test_file.write_text("content")
+
+        result = find_transcription_file(
+            "https://youtube.com/watch?v=abc123&t=30s", transcribe_dir
+        )
+        # Should not crash; may or may not find file
+        assert result is None or isinstance(result, type(test_file))
+
+    def test_find_with_dot_in_url_stem(self, tmp_path):
+        """Test finding file when URL stem has dots."""
+        from summarize_src.__main__ import find_transcription_file
+
+        transcribe_dir = tmp_path / "transcriptions"
+        transcribe_dir.mkdir()
+        test_file = transcribe_dir / "lecture.mp4.txt"
+        test_file.write_text("content")
+
+        result = find_transcription_file("lecture.mp4", transcribe_dir)
+        assert result is not None
+        assert result.name == "lecture.mp4.txt"
