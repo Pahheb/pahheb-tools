@@ -1,7 +1,5 @@
 """Progress tracking utilities."""
 
-from typing import Optional
-
 
 class ProgressTracker:
     """Simple progress tracker for transcription tasks."""
@@ -18,7 +16,7 @@ class ProgressTracker:
         self.description = description
         self.current = 0
 
-    def update(self, increment: int = 1, message: Optional[str] = None):
+    def update(self, increment: int = 1, message: str | None = None):
         """Update progress."""
         self.current += increment
         percentage = (self.current / self.total) * 100 if self.total > 0 else 0

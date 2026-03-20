@@ -1,22 +1,22 @@
 """Tests for summarize tool."""
 
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from summarize_src.config import Config
 from summarize_src.file_writer import (
     sanitize_filename,
-    write_summary_txt,
-    write_summary_md,
     write_summary_json,
+    write_summary_md,
+    write_summary_txt,
 )
 from summarize_src.summarizer import (
-    OllamaProvider,
     HuggingFaceProvider,
-    get_provider,
+    OllamaProvider,
     ProviderNotAvailableError,
-    SummarizerError,
+    get_provider,
 )
 
 
@@ -244,7 +244,7 @@ class TestFileWriter:
         output_path = tmp_path / "test.txt"
         metadata = {"source": "test.txt", "title": "Test File"}
 
-        result = write_summary_txt(summary, output_path, metadata)
+        write_summary_txt(summary, output_path, metadata)
 
         content = output_path.read_text()
         assert "Source: test.txt" in content
@@ -541,9 +541,10 @@ class TestCLI:
 
     def test_parse_args_with_transcribe_youtube(self):
         """Test parsing with transcribe flag and youtube source."""
-        from summarize_src.cli import parse_args
-        from unittest.mock import patch
         import sys
+        from unittest.mock import patch
+
+        from summarize_src.cli import parse_args
 
         with patch.object(
             sys,
@@ -690,26 +691,26 @@ class TestCLI:
 
     def test_parse_args_nonexistent_file(self, capsys):
         """Test parsing with nonexistent file shows warning."""
-        from summarize_src.cli import parse_args
-        import sys
         from pathlib import Path
         from unittest.mock import patch
+
+        from summarize_src.cli import parse_args
 
         nonexistent = Path("/nonexistent/file.txt")
 
         with patch("sys.argv", ["summarize", str(nonexistent)]):
             try:
-                args = parse_args()
+                parse_args()
             except SystemExit:
                 pass
-            captured = capsys.readouterr()
-            assert "Warning" in captured.err or "not found" in captured.err.lower()
+        captured = capsys.readouterr()
+        assert "Warning" in captured.err or "not found" in captured.err.lower()
 
     def test_parse_args_no_inputs_shows_help(self, capsys):
         """Test that running with no inputs shows help instead of error."""
-        from summarize_src.cli import parse_args
-        import sys
         from unittest.mock import patch
+
+        from summarize_src.cli import parse_args
 
         with patch("sys.argv", ["summarize"]):
             try:
@@ -910,3 +911,628 @@ class TestVideoIdExtraction:
             "https://www.youtube.com/watch?v=NonExistent", transcribe_dir
         )
         assert result is None
+
+
+class TestSanitizeFilenameEdgeCases:
+    """Tests for sanitize_filename edge cases."""
+
+    def test_sanitize_empty_string(self):
+        """Test that empty string returns 'unnamed'."""
+        assert sanitize_filename("") == "unnamed"
+
+    def test_sanitize_only_dots(self):
+        """Test that only dots returns 'unnamed'."""
+        assert sanitize_filename("...") == "unnamed"
+
+    def test_sanitize_trailing_dots_spaces(self):
+        """Test trailing dots and spaces are stripped."""
+        assert sanitize_filename("  file.txt...  ") == "file.txt"
+
+    def test_sanitize_unicode_characters(self):
+        """Test unicode characters are preserved."""
+        assert sanitize_filename("résumé.pdf") == "résumé.pdf"
+
+    def test_sanitize_exact_max_length(self):
+        """Test string exactly at max_length is unchanged."""
+        assert sanitize_filename("abcdefghij", max_length=10) == "abcdefghij"
+
+
+class TestFileWriterMetadataPaths:
+    """Tests for file writer metadata and key_points paths in md/json formats."""
+
+    def test_write_summary_md_with_duration_metadata(self, tmp_path):
+        """Test writing MD with duration metadata."""
+        output_path = tmp_path / "with_dur.md"
+        write_summary_md(
+            "Summary text.",
+            output_path,
+            key_points=["Point 1"],
+            metadata={"source": "test", "duration": "5:30"},
+        )
+        content = output_path.read_text()
+        assert "**Duration:** 5:30" in content
+        assert "**Source:** test" in content
+        assert "## Key Points" in content
+        assert "1. Point 1" in content
+        assert "## Summary" in content
+        assert "Summary text." in content
+
+    def test_write_summary_md_with_summary_type_metadata(self, tmp_path):
+        """Test writing MD with summary_type metadata."""
+        output_path = tmp_path / "with_type.md"
+        write_summary_md(
+            "Summary.",
+            output_path,
+            metadata={"source": "test", "summary_type": "detailed"},
+        )
+        content = output_path.read_text()
+        assert "**Type:** detailed" in content
+
+    def test_write_summary_md_with_all_metadata(self, tmp_path):
+        """Test writing MD with all metadata fields present."""
+        output_path = tmp_path / "all_meta.md"
+        write_summary_md(
+            "Full summary.",
+            output_path,
+            key_points=["A", "B"],
+            metadata={
+                "source": "youtube",
+                "title": "My Video",
+                "duration": "10:00",
+                "summary_type": "standard",
+            },
+        )
+        content = output_path.read_text()
+        assert "**Source:** youtube" in content
+        assert "**Title:** My Video" in content
+        assert "**Duration:** 10:00" in content
+        assert "**Type:** standard" in content
+        assert "## Key Points" in content
+
+    def test_write_summary_txt_with_duration_metadata(self, tmp_path):
+        """Test writing TXT with duration metadata."""
+        output_path = tmp_path / "with_dur.txt"
+        write_summary_txt(
+            "Summary.",
+            output_path,
+            metadata={"source": "test", "duration": "3:00"},
+        )
+        content = output_path.read_text()
+        assert "Duration: 3:00" in content
+
+    def test_write_summary_txt_with_summary_type_metadata(self, tmp_path):
+        """Test writing TXT with summary_type metadata."""
+        output_path = tmp_path / "with_type.txt"
+        write_summary_txt(
+            "Summary.",
+            output_path,
+            metadata={"source": "test", "summary_type": "brief"},
+        )
+        content = output_path.read_text()
+        assert "Summary Type: brief" in content
+
+    def test_write_summary_json_with_all_metadata(self, tmp_path):
+        """Test writing JSON with all metadata fields."""
+        import json
+
+        output_path = tmp_path / "full.json"
+        write_summary_json(
+            "Summary.",
+            output_path,
+            key_points=["A", "B"],
+            metadata={"source": "test", "title": "Test"},
+        )
+        content = json.loads(output_path.read_text())
+        assert content["summary"] == "Summary."
+        assert content["key_points"] == ["A", "B"]
+        assert content["metadata"]["source"] == "test"
+        assert content["metadata"]["title"] == "Test"
+
+
+class TestFileWriterEdgeCases:
+    """Tests for file writer edge cases."""
+
+    def test_write_summary_txt_no_metadata(self, tmp_path):
+        """Test writing TXT without metadata."""
+        output_path = tmp_path / "no_meta.txt"
+        write_summary_txt("Just a summary.", output_path)
+        content = output_path.read_text()
+        assert "Source:" not in content
+        assert "Just a summary." in content
+
+    def test_write_summary_txt_no_key_points(self, tmp_path):
+        """Test writing TXT without key points."""
+        output_path = tmp_path / "no_kp.txt"
+        write_summary_txt("Summary text.", output_path, metadata={"source": "test"})
+        content = output_path.read_text()
+        assert "KEY POINTS:" not in content
+        assert "Summary text." in content
+
+    def test_write_summary_md_no_metadata(self, tmp_path):
+        """Test writing MD without metadata."""
+        output_path = tmp_path / "no_meta.md"
+        write_summary_md("Just a summary.", output_path)
+        content = output_path.read_text()
+        # No metadata section means no Source/Title lines
+        assert "**Source:**" not in content
+        assert "Just a summary." in content
+
+    def test_write_summary_md_no_key_points(self, tmp_path):
+        """Test writing MD without key points."""
+        output_path = tmp_path / "no_kp.md"
+        write_summary_md("Summary text.", output_path)
+        content = output_path.read_text()
+        assert "## Key Points" not in content
+        assert "Summary text." in content
+
+    def test_write_summary_json_no_metadata(self, tmp_path):
+        """Test writing JSON without metadata."""
+        output_path = tmp_path / "no_meta.json"
+        write_summary_json("Summary.", output_path)
+        content = output_path.read_text()
+        assert '"metadata"' not in content
+        assert '"summary"' in content
+
+    def test_write_summary_json_no_key_points(self, tmp_path):
+        """Test writing JSON without key points."""
+        output_path = tmp_path / "no_kp.json"
+        write_summary_json("Summary.", output_path)
+        content = output_path.read_text()
+        assert '"key_points"' not in content
+
+
+class TestOllamaProviderEdgeCases:
+    """Tests for OllamaProvider edge cases."""
+
+    @patch("httpx.Client")
+    def test_is_available_returns_false_on_non_200(self, mock_client):
+        """Test is_available returns False on non-200 status."""
+        mock_response = MagicMock()
+        mock_response.status_code = 503
+        mock_client.return_value.__enter__.return_value.get.return_value = mock_response
+
+        provider = OllamaProvider()
+        assert provider.is_available() is False
+
+    @patch("httpx.Client")
+    def test_summarize_non_200_raises_summarizer_error(self, mock_client):
+        """Test that non-200 API response raises SummarizerError."""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "Internal Server Error"
+        mock_client.return_value.__enter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        provider = OllamaProvider()
+        from summarize_src.summarizer import SummarizerError
+
+        with pytest.raises(SummarizerError, match="Ollama API error"):
+            provider.summarize("Test text")
+
+    @patch("httpx.Client")
+    def test_summarize_timeout_raises_summarizer_error(self, mock_client):
+        """Test that httpx.TimeoutException raises SummarizerError."""
+        import httpx
+
+        mock_client.return_value.__enter__.return_value.post.side_effect = (
+            httpx.TimeoutException("Connection timed out")
+        )
+
+        provider = OllamaProvider()
+        from summarize_src.summarizer import SummarizerError
+
+        with pytest.raises(SummarizerError, match="timed out"):
+            provider.summarize("Test text")
+
+    def test_parse_response_star_bullet_points(self):
+        """Test parsing response with * bullet points."""
+        provider = OllamaProvider()
+        content = "KEYPOINTS:\n* First point\n* Second point\n\nSUMMARY:\nSummary text."
+        result = provider._parse_response(content)
+
+        assert "First point" in result.key_points
+        assert "Second point" in result.key_points
+
+    def test_parse_response_dot_bullet_points(self):
+        """Test parsing response with • bullet points."""
+        provider = OllamaProvider()
+        content = (
+            "KEYPOINTS:\n• First dot point\n• Second dot point\n\nSUMMARY:\nSummary."
+        )
+        result = provider._parse_response(content)
+
+        assert "First dot point" in result.key_points
+        assert "Second dot point" in result.key_points
+
+    def test_parse_response_key_points_with_space(self):
+        """Test parsing KEY POINTS: (with space) prefix."""
+        provider = OllamaProvider()
+        content = "KEY POINTS:\n- Point one\n- Point two\n\nSUMMARY:\nSummary text."
+        result = provider._parse_response(content)
+
+        assert "Point one" in result.key_points
+        assert "Point two" in result.key_points
+
+    def test_parse_response_short_points_filtered_out(self):
+        """Test that points <= 3 characters are filtered out."""
+        provider = OllamaProvider()
+        content = (
+            "KEYPOINTS:\n- OK\n- Abc\n- Yes this is long enough\n\nSUMMARY:\nText."
+        )
+        result = provider._parse_response(content)
+
+        assert "OK" not in result.key_points
+        assert "Abc" not in result.key_points
+        assert "Yes this is long enough" in result.key_points
+
+    def test_build_prompt_unknown_summary_type_fallback(self):
+        """Test that unknown summary_type falls back to default prompt."""
+        provider = OllamaProvider()
+        prompt = provider._build_prompt("test text", "unknown_type")
+        assert "comprehensive summary" in prompt.lower()
+
+
+class TestWatsonxProvider:
+    """Tests for WatsonxProvider."""
+
+    def test_is_available_with_credentials(self):
+        """Test is_available returns True when credentials are set."""
+        from summarize_src.summarizer import WatsonxProvider
+
+        provider = WatsonxProvider(api_key="key123", project_id="proj456")
+        assert provider.is_available() is True
+
+    def test_is_available_without_credentials(self):
+        """Test is_available returns False when credentials are missing."""
+        from summarize_src.summarizer import WatsonxProvider
+
+        provider = WatsonxProvider()
+        assert provider.is_available() is False
+
+    def test_summarize_without_credentials_raises(self):
+        """Test summarize raises ProviderNotAvailableError without credentials."""
+        from summarize_src.summarizer import ProviderNotAvailableError, WatsonxProvider
+
+        provider = WatsonxProvider()
+        with pytest.raises(ProviderNotAvailableError, match="credentials"):
+            provider.summarize("Test text")
+
+
+class TestReadTranscription:
+    """Tests for read_transcription function."""
+
+    def test_read_with_metadata_header(self, tmp_path):
+        """Test reading a file with metadata header and --- delimiters."""
+        from summarize_src.__main__ import read_transcription
+
+        txt = tmp_path / "meta.txt"
+        txt.write_text(
+            "source: youtube\nvideo_id: abc123\nmodel: small\n"
+            "---\n"
+            "This is the actual transcript.\n"
+            "---\n"
+        )
+        result = read_transcription(txt)
+        assert "This is the actual transcript." in result
+        assert "source: youtube" not in result
+
+    def test_read_only_metadata_no_transcript(self, tmp_path):
+        """Test reading a file with only metadata falls back to full content."""
+        from summarize_src.__main__ import read_transcription
+
+        txt = tmp_path / "meta_only.txt"
+        txt.write_text("source: youtube\nvideo_id: abc123\nmodel: small\n")
+        result = read_transcription(txt)
+        # Falls back to content since no transcript found
+        assert "source: youtube" in result
+
+    def test_read_with_string_path(self, tmp_path):
+        """Test reading with string path (not Path object)."""
+        from summarize_src.__main__ import read_transcription
+
+        txt = tmp_path / "string_path.txt"
+        txt.write_text("Hello world transcript.")
+        result = read_transcription(str(txt))
+        assert result == "Hello world transcript."
+
+    def test_read_empty_file(self, tmp_path):
+        """Test reading an empty file."""
+        from summarize_src.__main__ import read_transcription
+
+        txt = tmp_path / "empty.txt"
+        txt.write_text("")
+        result = read_transcription(txt)
+        assert result == ""
+
+
+class TestFindTranscriptionEdgeCases:
+    """Tests for find_transcription_file edge cases."""
+
+    def test_find_with_question_mark_in_url(self, tmp_path):
+        """Test finding file when URL stem has query params."""
+        from summarize_src.__main__ import find_transcription_file
+
+        transcribe_dir = tmp_path / "transcriptions"
+        transcribe_dir.mkdir()
+        test_file = transcribe_dir / "myvideo.txt"
+        test_file.write_text("content")
+
+        result = find_transcription_file(
+            "https://youtube.com/watch?v=abc123&t=30s", transcribe_dir
+        )
+        # Should not crash; may or may not find file
+        assert result is None or isinstance(result, type(test_file))
+
+    def test_find_with_dot_in_url_stem(self, tmp_path):
+        """Test finding file when URL stem has dots."""
+        from summarize_src.__main__ import find_transcription_file
+
+        transcribe_dir = tmp_path / "transcriptions"
+        transcribe_dir.mkdir()
+        test_file = transcribe_dir / "lecture.mp4.txt"
+        test_file.write_text("content")
+
+        result = find_transcription_file("lecture.mp4", transcribe_dir)
+        assert result is not None
+        assert result.name == "lecture.mp4.txt"
+
+
+class TestProviderNotAvailableMessages:
+    """Tests for provider-specific error messages in main()."""
+
+    def _make_config(self, provider, tmp_path):
+        """Helper to create a Config with a test file."""
+        test_file = tmp_path / "test.txt"
+        test_file.write_text("transcript content")
+        return Config(
+            input_files=[test_file],
+            provider=provider,
+            output_dir=tmp_path,
+        )
+
+    @patch("summarize_src.__main__.get_provider")
+    def test_ollama_not_available_shows_helpful_error(
+        self, mock_get_provider, tmp_path, capsys
+    ):
+        """Test that unavailable Ollama provider shows install instructions."""
+        from summarize_src.__main__ import main
+
+        mock_provider = MagicMock()
+        mock_provider.is_available.return_value = False
+        mock_get_provider.return_value = mock_provider
+
+        config = self._make_config("ollama", tmp_path)
+        with patch("summarize_src.__main__.parse_args") as mock_args:
+            mock_args.return_value = self._make_mock_args(config)
+            with pytest.raises(SystemExit):
+                main()
+
+        err = capsys.readouterr().err
+        assert "ollama serve" in err
+
+    @patch("summarize_src.__main__.get_provider")
+    def test_huggingface_not_available_shows_helpful_error(
+        self, mock_get_provider, tmp_path, capsys
+    ):
+        """Test that unavailable HuggingFace shows install instructions."""
+        from summarize_src.__main__ import main
+
+        mock_provider = MagicMock()
+        mock_provider.is_available.return_value = False
+        mock_get_provider.return_value = mock_provider
+
+        config = self._make_config("huggingface", tmp_path)
+        with patch("summarize_src.__main__.parse_args") as mock_args:
+            mock_args.return_value = self._make_mock_args(config)
+            with pytest.raises(SystemExit):
+                main()
+
+        err = capsys.readouterr().err
+        assert "transformers" in err.lower()
+
+    @patch("summarize_src.__main__.get_provider")
+    def test_watsonx_not_available_shows_helpful_error(
+        self, mock_get_provider, tmp_path, capsys
+    ):
+        """Test that unavailable Watsonx shows credential instructions."""
+        from summarize_src.__main__ import main
+
+        mock_provider = MagicMock()
+        mock_provider.is_available.return_value = False
+        mock_get_provider.return_value = mock_provider
+
+        config = self._make_config("watsonx", tmp_path)
+        with patch("summarize_src.__main__.parse_args") as mock_args:
+            mock_args.return_value = self._make_mock_args(config)
+            with pytest.raises(SystemExit):
+                main()
+
+        err = capsys.readouterr().err
+        assert "WATSONX_API_KEY" in err
+
+    def _make_mock_args(self, config):
+        """Create a mock args object matching a Config."""
+        args = MagicMock()
+        args.provider = config.provider
+        args.model = config.model
+        args.input_files = config.input_files
+        args.output_dir = config.output_dir
+        args.output_format = config.output_format
+        args.summary_length = config.summary_length
+        args.combine = config.combine
+        args.unified = config.unified
+        args.skip_combined = config.skip_combined
+        args.transcribe = config.transcribe_first
+        args.verbose = config.verbose
+        args.transcribe_source = config.transcribe_source
+        args.transcribe_language = config.transcribe_language
+        args.transcribe_model = config.transcribe_model
+        args.transcribe_device = config.transcribe_device
+        args.transcribe_compute = config.transcribe_compute
+        args.transcribe_denoise = config.transcribe_denoise
+        args.transcribe_vad = config.transcribe_vad
+        args.transcribe_audio_enhance = config.transcribe_audio_enhance
+        args.transcribe_srt = config.transcribe_srt
+        args.transcribe_cleanup = config.transcribe_cleanup
+        args.single_threaded = config.single_threaded
+        return args
+
+
+class TestSummarizeMainVerbose:
+    """Tests for verbose output in main() and summarize functions."""
+
+    def test_summarize_file_verbose(self, tmp_path, capsys):
+        """Test summarize_file with verbose=True prints reading message."""
+        from summarize_src.__main__ import summarize_file
+
+        txt = tmp_path / "test.txt"
+        txt.write_text("This is a transcript.")
+        config = Config(
+            input_files=[txt],
+            output_dir=tmp_path,
+            output_format="txt",
+            summary_length="standard",
+        )
+        mock_provider = MagicMock()
+        mock_result = MagicMock()
+        mock_result.summary = "Summary text."
+        mock_result.key_points = ["Point 1"]
+        mock_result.metadata = {}
+        mock_provider.summarize.return_value = mock_result
+
+        summarize_file(txt, config, mock_provider, verbose=True)
+
+        out = capsys.readouterr().out
+        assert "Reading:" in out
+        assert "Summarizing" in out
+        assert "characters" in out
+
+    def test_summarize_unified_verbose(self, tmp_path, capsys):
+        """Test summarize_unified with verbose=True."""
+        from summarize_src.__main__ import summarize_unified
+
+        txt1 = tmp_path / "file1.txt"
+        txt1.write_text("Transcript 1.")
+        txt2 = tmp_path / "file2.txt"
+        txt2.write_text("Transcript 2.")
+        config = Config(
+            input_files=[txt1, txt2],
+            output_dir=tmp_path,
+            output_format="txt",
+            summary_length="standard",
+        )
+        mock_provider = MagicMock()
+        mock_result = MagicMock()
+        mock_result.summary = "Unified summary."
+        mock_result.key_points = []
+        mock_result.metadata = {}
+        mock_provider.summarize.return_value = mock_result
+
+        summarize_unified([txt1, txt2], config, mock_provider, verbose=True)
+
+        out = capsys.readouterr().out
+        assert "Merging" in out
+        assert "unified" in out.lower()
+
+    def test_summarize_combined_verbose(self, tmp_path, capsys):
+        """Test summarize_combined with verbose=True."""
+        from summarize_src.__main__ import summarize_combined
+
+        txt1 = tmp_path / "file1.txt"
+        txt1.write_text("Transcript 1.")
+        txt2 = tmp_path / "file2.txt"
+        txt2.write_text("Transcript 2.")
+        config = Config(
+            input_files=[txt1, txt2],
+            output_dir=tmp_path,
+            output_format="txt",
+            summary_length="standard",
+        )
+        mock_provider = MagicMock()
+        mock_result = MagicMock()
+        mock_result.summary = "Summary of file."
+        mock_result.key_points = ["Key"]
+        mock_result.metadata = {}
+        mock_provider.summarize.return_value = mock_result
+
+        summarize_combined([txt1, txt2], config, mock_provider, verbose=True)
+
+        out = capsys.readouterr().out
+        assert "combined" in out.lower()
+        assert "file1.txt" in out
+
+    def test_summarize_file_output_formats(self, tmp_path):
+        """Test summarize_file writes correct format extensions."""
+        from summarize_src.__main__ import summarize_file
+
+        txt = tmp_path / "input.txt"
+        txt.write_text("Transcript content.")
+        mock_provider = MagicMock()
+        mock_result = MagicMock()
+        mock_result.summary = "Summary."
+        mock_result.key_points = ["Point"]
+        mock_result.metadata = {"source": "test"}
+        mock_provider.summarize.return_value = mock_result
+
+        for fmt in ("txt", "md", "json"):
+            config = Config(
+                input_files=[txt],
+                output_dir=tmp_path / fmt,
+                output_format=fmt,
+                summary_length="standard",
+            )
+            result = summarize_file(txt, config, mock_provider)
+            assert result.suffix == f".{fmt}"
+
+    def test_main_verbose_shows_config(self, tmp_path, capsys):
+        """Test that verbose mode in main() prints provider/model info."""
+        from summarize_src.__main__ import main
+
+        txt = tmp_path / "test.txt"
+        txt.write_text("Transcript.")
+
+        mock_provider = MagicMock()
+        mock_result = MagicMock()
+        mock_result.summary = "Summary."
+        mock_result.key_points = []
+        mock_result.metadata = {}
+        mock_provider.is_available.return_value = True
+        mock_provider.summarize.return_value = mock_result
+
+        with (
+            patch("summarize_src.__main__.get_provider", return_value=mock_provider),
+            patch(
+                "sys.argv",
+                ["summarize", str(txt), "--verbose"],
+            ),
+        ):
+            main()
+
+        out = capsys.readouterr().out
+        assert "Provider:" in out
+        assert "Output dir:" in out
+
+    def test_main_generic_exception_verbose_shows_traceback(self, tmp_path, capsys):
+        """Test that verbose mode shows traceback on generic exception."""
+        from summarize_src.__main__ import main
+
+        txt = tmp_path / "test.txt"
+        txt.write_text("Transcript.")
+
+        # get_provider raises during setup, hitting the top-level Exception handler
+        with (
+            patch(
+                "summarize_src.__main__.get_provider",
+                side_effect=RuntimeError("unexpected crash"),
+            ),
+            patch(
+                "sys.argv",
+                ["summarize", str(txt), "--verbose"],
+            ),
+            pytest.raises(SystemExit),
+        ):
+            main()
+
+        err = capsys.readouterr().err
+        assert "Unexpected error" in err

@@ -1,8 +1,11 @@
 """CLI entry point for summarize tool."""
 
+import queue
 import re
 import subprocess
 import sys
+import threading
+from collections.abc import Sequence
 from pathlib import Path
 
 from .cli import parse_args
@@ -14,8 +17,8 @@ from .file_writer import (
 )
 from .summarizer import (
     ProviderNotAvailableError,
-    get_provider,
     SummarizerError,
+    get_provider,
 )
 
 
@@ -92,7 +95,7 @@ def transcribe_file(
         print(f"Transcribe output dir: {config.transcribe_output_dir}")
 
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603
             transcribe_cmd,
             capture_output=True,
             text=True,
@@ -102,29 +105,20 @@ def transcribe_file(
         if verbose:
             print(result.stdout)
 
-        if isinstance(file_path, Path):
-            stem = file_path.stem
-        else:
-            stem = file_path.split("/")[-1].split("\\")[-1]
-            if "?" in stem:
-                stem = stem.split("?")[0]
-
-        txt_file = config.transcribe_output_dir / f"{stem}.txt"
-        if txt_file.exists():
+        txt_file = find_transcription_file(input_str, config.transcribe_output_dir)
+        if txt_file:
             return txt_file
-
-        matching_files = list(config.transcribe_output_dir.glob(f"{stem}*.txt"))
-        if matching_files:
-            return max(matching_files, key=lambda p: p.stat().st_mtime)
 
         raise FileNotFoundError(f"Could not find transcription output for {file_path}")
 
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Transcription failed: {e.stderr}")
+        raise RuntimeError(f"Transcription failed: {e.stderr}") from e
 
 
-def read_transcription(file_path: Path) -> str:
+def read_transcription(file_path: Path | str) -> str:
     """Read transcription from a text file."""
+    if isinstance(file_path, str):
+        file_path = Path(file_path)
     content = file_path.read_text(encoding="utf-8")
 
     lines = content.split("\n")
@@ -338,6 +332,117 @@ def summarize_combined(
     return output_path
 
 
+_SENTINEL = object()
+
+
+def _transcribe_then_summarize_thread(
+    input_files: Sequence[str | Path],
+    config: Config,
+    provider,
+    verbose: bool = False,
+) -> tuple[list[Path], int, int, int]:
+    """Two-thread pipeline: transcriber feeds queue, summarizer consumes.
+
+    Only one Whisper instance runs at a time (no GPU/CPU contention).
+    Summarization starts immediately after the first transcription finishes.
+    """
+    summary_queue: queue.Queue[Path | object] = queue.Queue()
+    output_paths: list[Path] = []
+    errors: list[tuple[str, Exception]] = []
+    lock = threading.Lock()
+
+    def summarize_worker() -> None:
+        """Consume transcribed files from queue and summarize."""
+        while True:
+            item = summary_queue.get(timeout=600)
+            if item is _SENTINEL:
+                summary_queue.task_done()
+                break
+            txt_path = item
+            assert isinstance(txt_path, Path)
+            try:
+                out = summarize_file(txt_path, config, provider, verbose)
+                print(f"✓ Summary saved to: {out}")
+                with lock:
+                    output_paths.append(out)
+            except Exception as e:
+                print(
+                    f"Warning: Summarization failed for {txt_path}: {e}",
+                    file=sys.stderr,
+                )
+                with lock:
+                    errors.append(("summarize", e))
+            finally:
+                summary_queue.task_done()
+
+    sum_thread = threading.Thread(target=summarize_worker, daemon=True)
+    sum_thread.start()
+
+    transcribed_count = 0
+    transcribed_errors = 0
+
+    # Transcriber runs on main thread (sequential within itself)
+    for file_path in input_files:
+        txt_path = find_transcription_file(file_path, config.transcribe_output_dir)
+        if txt_path:
+            if verbose:
+                print(f"Using existing transcription: {txt_path}")
+            summary_queue.put(txt_path)
+        else:
+            try:
+                txt_path = transcribe_file(file_path, config, verbose)
+                summary_queue.put(txt_path)
+                transcribed_count += 1
+            except Exception as e:
+                print(
+                    f"Warning: Transcription failed for {file_path}: {e}",
+                    file=sys.stderr,
+                )
+                transcribed_errors += 1
+                with lock:
+                    errors.append(("transcribe", e))
+
+    # Signal summarizer to finish
+    summary_queue.put(_SENTINEL)
+    sum_thread.join()
+
+    summarized_errors = len([e for t, e in errors if t == "summarize"])
+
+    return output_paths, transcribed_count, transcribed_errors, summarized_errors
+
+
+def _transcribe_then_combine(
+    input_files: Sequence[str | Path],
+    config: Config,
+    provider,
+    verbose: bool = False,
+) -> tuple[list[Path], int, int]:
+    """Threaded transcription followed by sequential combine."""
+    processed_files: list[Path] = []
+    transcribed_count = 0
+    transcribed_errors = 0
+
+    for file_path in input_files:
+        txt_path = find_transcription_file(file_path, config.transcribe_output_dir)
+        if txt_path:
+            if verbose:
+                print(f"Using existing transcription: {txt_path}")
+            processed_files.append(txt_path)
+        else:
+            try:
+                txt_path = transcribe_file(file_path, config, verbose)
+                processed_files.append(txt_path)
+                transcribed_count += 1
+            except Exception as e:
+                print(
+                    f"Warning: Transcription failed for {file_path}: {e}",
+                    file=sys.stderr,
+                )
+                transcribed_errors += 1
+
+    return processed_files, transcribed_count, transcribed_errors
+
+
 def main():
     """Main entry point."""
     args = parse_args()
@@ -364,6 +469,7 @@ def main():
         transcribe_audio_enhance=args.transcribe_audio_enhance,
         transcribe_srt=args.transcribe_srt,
         transcribe_cleanup=args.transcribe_cleanup,
+        single_threaded=args.single_threaded,
     )
 
     if config.verbose:
@@ -439,20 +545,67 @@ def main():
             sys.exit(1)
 
         processed_files = []
+        transcribed_count = 0
+        transcribed_errors = 0
+        summarized_errors = 0
 
         if config.transcribe_first:
-            for file_path in config.input_files:
-                txt_path = find_transcription_file(
-                    file_path, config.transcribe_output_dir
+            if config.unified or config.single_threaded:
+                # Sequential: all transcriptions, then one unified summary
+                for file_path in config.input_files:
+                    txt_path = find_transcription_file(
+                        file_path, config.transcribe_output_dir
+                    )
+                    if txt_path:
+                        if config.verbose:
+                            print(f"Using existing transcription: {txt_path}")
+                        processed_files.append(txt_path)
+                    else:
+                        try:
+                            txt_path = transcribe_file(
+                                file_path, config, config.verbose
+                            )
+                            processed_files.append(txt_path)
+                            transcribed_count += 1
+                        except Exception as e:
+                            print(
+                                f"Warning: Transcription failed for {file_path}: {e}",
+                                file=sys.stderr,
+                            )
+                            transcribed_errors += 1
+            elif config.combine:
+                # Transcribe sequentially, then combine summaries
+                processed_files, tc, te = _transcribe_then_combine(
+                    config.input_files, config, provider, config.verbose
                 )
-                if txt_path:
-                    if config.verbose:
-                        print(f"Using existing transcription: {txt_path}")
-                    processed_files.append(txt_path)
+                transcribed_count = tc
+                transcribed_errors = te
+            else:
+                # Default: two-thread pipeline (transcribe → summarize in parallel)
+                (
+                    outputs,
+                    transcribed_count,
+                    transcribed_errors,
+                    summarized_errors,
+                ) = _transcribe_then_summarize_thread(
+                    config.input_files, config, provider, config.verbose
+                )
+                if transcribed_errors or summarized_errors:
+                    total = len(outputs) + transcribed_errors + summarized_errors
+                    errs = transcribed_errors + summarized_errors
+                    print(
+                        f"\nCompleted with errors: {total - errs} succeeded, "
+                        f"{errs} failed.",
+                        file=sys.stderr,
+                    )
+                    if not outputs:
+                        sys.exit(1)
+                elif outputs:
+                    print(f"\n✓ All {len(outputs)} files summarized successfully.")
                 else:
-                    txt_path = transcribe_file(file_path, config, config.verbose)
-                    processed_files.append(txt_path)
-            processed_files = config.filter_input_files()
+                    print("Error: No valid input files to process", file=sys.stderr)
+                    sys.exit(1)
+                return
         else:
             processed_files = config.filter_input_files()
 
@@ -471,11 +624,28 @@ def main():
             )
             print(f"\n✓ Combined summary saved to: {output_path}")
         else:
+            summarized_count = 0
             for file_path in processed_files:
-                output_path = summarize_file(
-                    file_path, config, provider, config.verbose
+                try:
+                    output_path = summarize_file(
+                        file_path, config, provider, config.verbose
+                    )
+                    print(f"✓ Summary saved to: {output_path}")
+                    summarized_count += 1
+                except Exception as e:
+                    print(
+                        f"Warning: Summarization failed for {file_path}: {e}",
+                        file=sys.stderr,
+                    )
+                    summarized_errors += 1
+            if transcribed_errors or summarized_errors:
+                total = transcribed_count + summarized_count
+                errs = transcribed_errors + summarized_errors
+                print(
+                    f"\nCompleted with errors: {total} succeeded, {errs} failed.",
+                    file=sys.stderr,
                 )
-                print(f"✓ Summary saved to: {output_path}")
+                sys.exit(1)
 
     except ProviderNotAvailableError as e:
         print(f"Error: {e}", file=sys.stderr)

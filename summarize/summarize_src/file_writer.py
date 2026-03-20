@@ -1,7 +1,6 @@
 """File writing utilities for summarize tool."""
 
 import json
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -104,7 +103,7 @@ def write_summary_json(
     """Write summary as JSON file."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    data = {
+    data: dict[str, Any] = {
         "summary": summary,
     }
 

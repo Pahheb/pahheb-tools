@@ -1,0 +1,47 @@
+target-version = "py312"
+
+[lint]
+select = [
+  "E",     # pycodestyle errors
+  "W",     # pycodestyle warnings
+  "F",     # Pyflakes
+  "I",     # isort
+  "UP",    # pyupgrade
+  "S",     # flake8-bandit (security)
+  "C4",    # flake8-comprehensions
+  "B",     # flake8-bugbear
+  "C90",   # mccabe complexity
+  "PIE",   # flake8-pie
+  "T20",   # flake8-print
+  "RUF",   # Ruff-specific rules
+]
+ignore = [
+  "S101",   # assert found (acceptable for tests)
+  "T20",    # no print statements (we allow print for CLI output)
+  "E501",   # line too long (handled by formatter)
+  "PIE810", # startswith isin check (false positive)
+  "C901",   # too complex (existing code)
+  "B028",   # no explicit stacklevel keyword (false positive in logging)
+  "UP007",  # use of | for unions (pyupgrade conservative)
+  "S608",   # hardcoded SQL (acceptable for test queries)
+  "B904",   # raise from err (existing code)
+  "S603",   # subprocess calls (existing code)
+  "RUF046", # int(round(...)) cast (existing code)
+  "S607",   # partial executable path (existing code)
+]
+
+[lint.per-file-ignores]
+"tests/*" = [
+  "S101",   # allow print in tests
+  "T20",    # allow print in tests
+  "B018",   # allow unused variables in tests
+  "S603",   # allow subprocess calls in tests
+  "S607",   # allow hardcoded paths in tests
+  "S108",   # allow /tmp in tests
+]
+"__init__.py" = ["F401"]   # allow unused imports in __init__
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"

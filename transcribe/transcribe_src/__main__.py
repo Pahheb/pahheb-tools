@@ -34,7 +34,9 @@ def main():
 
     if config.source == "youtube":
         try:
-            output_files = process_youtube_video(config, args.input, verbose=args.verbose)
+            output_files = process_youtube_video(
+                config, args.input, verbose=args.verbose
+            )
             print("\n✓ Successfully transcribed YouTube video")
             for f in output_files:
                 print(f"  → {f}")

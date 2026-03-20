@@ -206,6 +206,14 @@ Examples:
         help="Show detailed progress information",
     )
 
+    parser.add_argument(
+        "--single-threaded",
+        "--st",
+        action="store_true",
+        help="Disable threaded processing. Transcribe all files first, then summarize. "
+        "Use on low-resource systems or to troubleshoot threading issues.",
+    )
+
     args = parser.parse_args()
 
     if not args.input:

@@ -2,8 +2,6 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Generator, Optional
 
 import httpx
 
@@ -11,19 +9,13 @@ import httpx
 class SummarizerError(Exception):
     """Base exception for summarizer errors."""
 
-    pass
-
 
 class ProviderNotAvailableError(SummarizerError):
     """Raised when the requested provider is not available."""
 
-    pass
-
 
 class ModelNotFoundError(SummarizerError):
     """Raised when the requested model is not found."""
-
-    pass
 
 
 @dataclass
@@ -41,12 +33,10 @@ class BaseProvider(ABC):
     @abstractmethod
     def summarize(self, text: str, summary_type: str = "standard") -> SummaryResult:
         """Summarize the given text."""
-        pass
 
     @abstractmethod
     def is_available(self) -> bool:
         """Check if the provider is available."""
-        pass
 
 
 class OllamaProvider(BaseProvider):
@@ -103,7 +93,7 @@ Remember: Preserve all factual information, names, dates, numbers, and technical
         prompt = self._build_prompt(text, summary_type)
 
         try:
-            with httpx.Client(timeout=300.0) as client:
+            with httpx.Client(timeout=900.0) as client:
                 response = client.post(
                     f"{self.base_url}/api/generate",
                     json={
@@ -131,9 +121,11 @@ Remember: Preserve all factual information, names, dates, numbers, and technical
             raise ProviderNotAvailableError(
                 f"Cannot connect to Ollama at {self.base_url}. "
                 "Is Ollama running? Run 'ollama serve' to start it."
-            )
+            ) from None
         except httpx.TimeoutException:
-            raise SummarizerError("Request timed out. The text may be too long.")
+            raise SummarizerError(
+                "Request timed out. The text may be too long."
+            ) from None
 
     def _parse_response(self, content: str) -> SummaryResult:
         """Parse the Ollama response into key points and summary."""
@@ -194,19 +186,19 @@ class HuggingFaceProvider(BaseProvider):
 
     def is_available(self) -> bool:
         """Check if transformers is available and model can be loaded."""
-        try:
-            import transformers
+        import importlib.util
 
-            return True
-        except ImportError:
-            return False
+        return importlib.util.find_spec("transformers") is not None
 
     def _ensure_model_loaded(self):
         """Lazy load the model."""
         if self._model is None:
             try:
                 import torch
-                from transformers import AutoModelForCausalLM, AutoTokenizer
+                from transformers import (  # type: ignore[import-not-found]
+                    AutoModelForCausalLM,
+                    AutoTokenizer,
+                )
 
                 device = self.device
                 if device == "auto":
@@ -222,13 +214,15 @@ class HuggingFaceProvider(BaseProvider):
                     device_map=device,
                     trust_remote_code=True,
                 )
-            except ImportError as e:
+            except ImportError:
                 raise ProviderNotAvailableError(
                     "transformers library not installed. "
                     "Install with: pip install transformers torch"
-                )
-            except Exception as e:
-                raise ModelNotFoundError(f"Failed to load model {self.model_name}: {e}")
+                ) from None
+            except Exception as exc:
+                raise ModelNotFoundError(
+                    f"Failed to load model {self.model_name}: {exc}"
+                ) from exc
 
     def _build_prompt(self, text: str, summary_type: str) -> str:
         """Build the prompt based on summary type."""
@@ -265,7 +259,7 @@ Remember: Preserve all factual information, names, dates, numbers, and technical
     def summarize(self, text: str, summary_type: str = "standard") -> SummaryResult:
         """Summarize text using Hugging Face."""
         self._ensure_model_loaded()
-
+        assert self._model is not None and self._tokenizer is not None
         prompt = self._build_prompt(text, summary_type)
 
         try:
@@ -294,7 +288,7 @@ Remember: Preserve all factual information, names, dates, numbers, and technical
             return self._parse_response(content)
 
         except Exception as e:
-            raise SummarizerError(f"Error during summarization: {e}")
+            raise SummarizerError(f"Error during summarization: {e}") from e
 
     def _parse_response(self, content: str) -> SummaryResult:
         """Parse the response into key points and summary."""
