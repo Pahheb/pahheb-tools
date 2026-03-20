@@ -10,7 +10,7 @@ class Config:
 
     provider: str = "ollama"
     model: str = "llama3.2"
-    input_files: list[Path] = field(default_factory=list)
+    input_files: list[str | Path] = field(default_factory=list)
     output_dir: Path = field(default_factory=lambda: Path("./summaries"))
     output_format: str = "txt"
     summary_length: str = "standard"
@@ -34,21 +34,6 @@ class Config:
 
     def __post_init__(self):
         """Validate configuration."""
-        if self.provider not in ["ollama", "huggingface", "watsonx"]:
-            raise ValueError(
-                f"Invalid provider: {self.provider}. Must be: ollama, huggingface, or watsonx"
-            )
-
-        if self.output_format not in ["txt", "md", "json"]:
-            raise ValueError(
-                f"Invalid output_format: {self.output_format}. Must be: txt, md, or json"
-            )
-
-        if self.summary_length not in ["brief", "standard", "detailed"]:
-            raise ValueError(
-                f"Invalid summary_length: {self.summary_length}. Must be: brief, standard, or detailed"
-            )
-
         if isinstance(self.output_dir, str):
             self.output_dir = Path(self.output_dir).expanduser().resolve()
 

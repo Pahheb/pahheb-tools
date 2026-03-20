@@ -5,25 +5,11 @@ from pathlib import Path
 from typing import Any
 
 
-def sanitize_filename(filename: str, max_length: int = 100) -> str:
-    """Sanitize filename by removing invalid characters."""
-    invalid_chars = '<>:"/\\|?*'
-    for char in invalid_chars:
-        filename = filename.replace(char, "_")
-
-    filename = filename.strip(". ")
-
-    if len(filename) > max_length:
-        filename = filename[:max_length]
-
-    return filename if filename else "unnamed"
-
-
 def write_summary_txt(
     summary: str,
     output_path: Path,
-    metadata: dict[str, Any] | None = None,
     key_points: list[str] | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> Path:
     """Write summary as plain text file."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -117,3 +103,20 @@ def write_summary_json(
         json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
     )
     return output_path
+
+
+def write_summary(
+    summary: str,
+    output_path: Path,
+    fmt: str,
+    key_points: list[str] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> Path:
+    """Write summary in the specified format."""
+    writers = {
+        "txt": write_summary_txt,
+        "md": write_summary_md,
+        "json": write_summary_json,
+    }
+    writer = writers.get(fmt, write_summary_txt)
+    return writer(summary, output_path, key_points=key_points, metadata=metadata)

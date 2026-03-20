@@ -1,19 +1,6 @@
 """File output handling for transcripts."""
 
-import re
 from pathlib import Path
-
-
-def sanitize_filename(text: str, max_length: int = 100) -> str:
-    """Sanitize text for use in filenames."""
-    sanitized = re.sub(r'[<>:"/\\|?*]', "_", text)
-    sanitized = re.sub(r"\s+", " ", sanitized)
-    sanitized = sanitized.strip(". ")
-    if len(sanitized) > max_length:
-        sanitized = sanitized[:max_length].rsplit(" ", 1)[0]
-    if not sanitized:
-        sanitized = "untitled"
-    return sanitized
 
 
 def format_srt_timestamp(seconds: float) -> str:
@@ -35,17 +22,7 @@ def write_transcript_txt(
     output_path: Path,
     metadata: dict | None = None,
 ) -> Path:
-    """
-    Write transcript as plain text.
-
-    Args:
-        segments: List of segment dictionaries
-        output_path: Output file path
-        metadata: Optional metadata dict (title, source, etc.)
-
-    Returns:
-        Path to written file
-    """
+    """Write transcript as plain text."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_path, "w", encoding="utf-8") as f:
@@ -64,16 +41,7 @@ def write_transcript_srt(
     segments: list[dict],
     output_path: Path,
 ) -> Path:
-    """
-    Write transcript as SRT subtitles.
-
-    Args:
-        segments: List of segment dictionaries with text, start, end
-        output_path: Output file path
-
-    Returns:
-        Path to written file
-    """
+    """Write transcript as SRT subtitles."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_path, "w", encoding="utf-8") as f:
@@ -95,19 +63,7 @@ def write_transcripts(
     write_srt: bool = False,
     verbose: bool = False,
 ) -> list[Path]:
-    """
-    Write transcript to files.
-
-    Args:
-        segments: List of segment dictionaries
-        output_base: Base output path (without extension)
-        metadata: Optional metadata dict
-        write_srt: Whether to write SRT file
-        verbose: Enable verbose output
-
-    Returns:
-        List of written file paths
-    """
+    """Write transcript to files."""
     written = []
 
     txt_path = output_base.with_suffix(".txt")

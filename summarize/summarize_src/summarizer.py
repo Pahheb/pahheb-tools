@@ -39,6 +39,50 @@ class BaseProvider(ABC):
         """Check if the provider is available."""
 
 
+def _parse_response(content: str, source: str, model: str) -> SummaryResult:
+    """Parse provider response into key points and summary."""
+    key_points = []
+
+    parts = content.split("SUMMARY:", 1)
+    if len(parts) > 1:
+        summary_part = parts[1].strip()
+    else:
+        summary_part = content.strip()
+
+    points_part = parts[0].strip() if len(parts) > 1 else ""
+
+    if points_part.startswith("KEYPOINTS:"):
+        points_part = points_part[10:].strip()
+    elif points_part.startswith("KEY POINTS:"):
+        points_part = points_part[11:].strip()
+
+    for line in points_part.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("-"):
+            point = line[1:].strip()
+        elif line and line[0].isdigit() and "." in line:
+            point = line.split(".", 1)[1].strip()
+        elif line.startswith("*"):
+            point = line[1:].strip()
+        elif line.startswith("•"):
+            point = line[1:].strip()
+        else:
+            continue
+        if point and len(point) > 3:
+            key_points.append(point)
+
+    if not key_points and summary_part:
+        key_points = ["See summary for main points"]
+
+    return SummaryResult(
+        summary=summary_part,
+        key_points=key_points,
+        metadata={"provider": source, "model": model},
+    )
+
+
 class OllamaProvider(BaseProvider):
     """Ollama local provider."""
 
@@ -115,7 +159,7 @@ Remember: Preserve all factual information, names, dates, numbers, and technical
                 result = response.json()
                 content = result.get("response", "")
 
-                return self._parse_response(content)
+                return _parse_response(content, "ollama", self.model)
 
         except httpx.ConnectError:
             raise ProviderNotAvailableError(
@@ -126,49 +170,6 @@ Remember: Preserve all factual information, names, dates, numbers, and technical
             raise SummarizerError(
                 "Request timed out. The text may be too long."
             ) from None
-
-    def _parse_response(self, content: str) -> SummaryResult:
-        """Parse the Ollama response into key points and summary."""
-        key_points = []
-
-        parts = content.split("SUMMARY:", 1)
-        if len(parts) > 1:
-            summary_part = parts[1].strip()
-        else:
-            summary_part = content.strip()
-
-        points_part = parts[0].strip() if len(parts) > 1 else ""
-
-        if points_part.startswith("KEYPOINTS:"):
-            points_part = points_part[10:].strip()
-        elif points_part.startswith("KEY POINTS:"):
-            points_part = points_part[11:].strip()
-
-        for line in points_part.split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-            if line.startswith("-"):
-                point = line[1:].strip()
-            elif line[0].isdigit() and "." in line:
-                point = line.split(".", 1)[1].strip()
-            elif line.startswith("*"):
-                point = line[1:].strip()
-            elif line.startswith("•"):
-                point = line[1:].strip()
-            else:
-                continue
-            if point and len(point) > 3:
-                key_points.append(point)
-
-        if not key_points and summary_part:
-            key_points = ["See summary for main points"]
-
-        return SummaryResult(
-            summary=summary_part,
-            key_points=key_points,
-            metadata={"provider": "ollama", "model": self.model},
-        )
 
 
 class HuggingFaceProvider(BaseProvider):
@@ -285,83 +286,10 @@ Remember: Preserve all factual information, names, dates, numbers, and technical
                 else response
             )
 
-            return self._parse_response(content)
+            return _parse_response(content, "huggingface", self.model_name)
 
         except Exception as e:
             raise SummarizerError(f"Error during summarization: {e}") from e
-
-    def _parse_response(self, content: str) -> SummaryResult:
-        """Parse the response into key points and summary."""
-        key_points = []
-
-        parts = content.split("SUMMARY:", 1)
-        if len(parts) > 1:
-            summary_part = parts[1].strip()
-        else:
-            summary_part = content.strip()
-
-        points_part = parts[0].strip() if len(parts) > 1 else ""
-
-        if points_part.startswith("KEYPOINTS:"):
-            points_part = points_part[10:].strip()
-        elif points_part.startswith("KEY POINTS:"):
-            points_part = points_part[11:].strip()
-
-        for line in points_part.split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-            if line.startswith("-"):
-                point = line[1:].strip()
-            elif line and line[0].isdigit() and "." in line:
-                point = line.split(".", 1)[1].strip()
-            elif line.startswith("*"):
-                point = line[1:].strip()
-            elif line.startswith("•"):
-                point = line[1:].strip()
-            else:
-                continue
-            if point and len(point) > 3:
-                key_points.append(point)
-
-        if not key_points and summary_part:
-            key_points = ["See summary for main points"]
-
-        return SummaryResult(
-            summary=summary_part,
-            key_points=key_points,
-            metadata={"provider": "huggingface", "model": self.model_name},
-        )
-
-
-class WatsonxProvider(BaseProvider):
-    """IBM watsonx.ai provider (cloud-based)."""
-
-    def __init__(
-        self,
-        model: str = "ibm/granite-4-hulti",
-        project_id: str | None = None,
-        api_key: str | None = None,
-        url: str = "https://us-south.ml.cloud.ibm.com",
-    ):
-        self.model = model
-        self.project_id = project_id
-        self.api_key = api_key
-        self.url = url
-
-    def is_available(self) -> bool:
-        """Check if watsonx credentials are configured."""
-        return bool(self.api_key and self.project_id)
-
-    def summarize(self, text: str, summary_type: str = "standard") -> SummaryResult:
-        """Summarize text using watsonx.ai (cloud)."""
-        if not self.is_available():
-            raise ProviderNotAvailableError(
-                "watsonx.ai credentials not configured. "
-                "Set WATSONX_API_KEY and WATSONX_PROJECT_ID environment variables."
-            )
-
-        raise NotImplementedError("watsonx provider is not yet implemented")
 
 
 def get_provider(
@@ -374,7 +302,5 @@ def get_provider(
         return OllamaProvider(model=model or "llama3.2")
     elif provider == "huggingface":
         return HuggingFaceProvider(model=model or "microsoft/Phi-3.5-mini-instruct")
-    elif provider == "watsonx":
-        return WatsonxProvider(model=model or "ibm/granite-4-hulti")
     else:
         raise ValueError(f"Unknown provider: {provider}")

@@ -15,7 +15,6 @@ def main():
 
     config = Config(
         source=args.source,
-        input_path=args.input,
         output_dir=args.output_dir,
         language=args.language,
         model_size=args.model,
@@ -32,32 +31,21 @@ def main():
 
     input_path = Path(args.input)
 
-    if config.source == "youtube":
-        try:
+    try:
+        if config.source == "youtube":
             output_files = process_youtube_video(
                 config, args.input, verbose=args.verbose
             )
             print("\n✓ Successfully transcribed YouTube video")
-            for f in output_files:
-                print(f"  → {f}")
-        except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
-    else:
-        try:
+        else:
             output_files = process_local_file(config, input_path, verbose=args.verbose)
             print(f"\n✓ Successfully transcribed: {input_path.name}")
-            for f in output_files:
-                print(f"  → {f}")
-        except FileNotFoundError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
-        except ValueError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
-        except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
+
+        for f in output_files:
+            print(f"  → {f}")
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

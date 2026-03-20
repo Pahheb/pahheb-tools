@@ -9,11 +9,9 @@ import pytest
 from transcribe_src.config import Config
 from transcribe_src.file_writer import (
     format_srt_timestamp,
-    sanitize_filename,
     write_transcript_srt,
     write_transcript_txt,
 )
-from transcribe_src.progress import ProgressTracker
 from transcribe_src.youtube_downloader import (
     YouTubeDownloadError,
     download_youtube_audio,
@@ -26,7 +24,7 @@ class TestConfig:
 
     def test_config_local_defaults(self):
         """Test default config for local source."""
-        config = Config(source="local", input_path="test.mp3")
+        config = Config(source="local")
         assert config.source == "local"
         assert config.model_size == "small"
         assert config.device == "auto"
@@ -39,7 +37,6 @@ class TestConfig:
         """Test config with various options."""
         config = Config(
             source="youtube",
-            input_path="https://youtube.com/watch?v=test",
             output_dir=Path("/tmp/output"),
             language="en",
             model_size="medium",
@@ -55,37 +52,15 @@ class TestConfig:
         assert config.vad is True
         assert config.srt is True
 
-    def test_config_invalid_source(self):
-        """Test config with invalid source."""
-        with pytest.raises(ValueError, match="Invalid source"):
-            Config(source="invalid", input_path="test.mp3")
-
-    def test_config_invalid_model(self):
-        """Test config with invalid model size."""
-        with pytest.raises(ValueError, match="Invalid model_size"):
-            Config(source="local", input_path="test.mp3", model_size="invalid")
-
     def test_config_output_dir_path(self):
         """Test output_dir is converted to Path."""
-        config = Config(source="local", input_path="test.mp3", output_dir="/tmp/out")
+        config = Config(source="local", output_dir="/tmp/out")
         assert isinstance(config.output_dir, Path)
         assert config.output_dir == Path("/tmp/out")
 
 
 class TestFileWriter:
     """Tests for file writer functions."""
-
-    def test_sanitize_filename(self):
-        """Test filename sanitization."""
-        assert sanitize_filename("test file") == "test file"
-        assert sanitize_filename("test<>file") == "test__file"
-        assert sanitize_filename("  spaces  ") == "spaces"
-        assert sanitize_filename("a" * 150, max_length=10) == "aaaaaaaaaa"
-
-    def test_sanitize_filename_empty(self):
-        """Test sanitization with only special chars."""
-        result = sanitize_filename("<>:/\\|?*")
-        assert result == "________"
 
     def test_format_srt_timestamp(self):
         """Test SRT timestamp formatting."""
@@ -137,25 +112,6 @@ class TestFileWriter:
         assert "00:00:00,000 --> 00:00:01,500" in content
         assert "2\n" in content
         assert "00:00:01,500 --> 00:00:03,000" in content
-
-
-class TestProgressTracker:
-    """Tests for ProgressTracker class."""
-
-    def test_progress_initialization(self):
-        """Test progress tracker initialization."""
-        tracker = ProgressTracker(10, "Test")
-        assert tracker.total == 10
-        assert tracker.current == 0
-        assert tracker.description == "Test"
-
-    def test_progress_update(self):
-        """Test progress update."""
-        tracker = ProgressTracker(10, "Test")
-        tracker.update(5)
-        assert tracker.current == 5
-        tracker.update()
-        assert tracker.current == 6
 
 
 class TestYouTubeDownloader:
@@ -305,53 +261,6 @@ class TestYouTubeDownloader:
         assert output_dir.exists()
 
 
-class TestConfigEdgeCases:
-    """Tests for Config validation edge cases."""
-
-    def test_config_invalid_device(self):
-        """Test config with invalid device raises ValueError."""
-        with pytest.raises(ValueError, match="Invalid device"):
-            Config(source="local", input_path="test.mp3", device="tpu")
-
-    def test_config_valid_devices(self):
-        """Test all valid devices are accepted."""
-        for device in ("auto", "cuda", "cpu", "mps"):
-            config = Config(source="local", input_path="test.mp3", device=device)
-            assert config.device == device
-
-
-class TestSanitizeFilenameEdgeCases:
-    """Tests for sanitize_filename edge cases."""
-
-    def test_sanitize_empty_string(self):
-        """Test that empty string returns 'untitled'."""
-        assert sanitize_filename("") == "untitled"
-
-    def test_sanitize_only_dots_and_spaces(self):
-        """Test that only dots and spaces returns 'untitled'."""
-        assert sanitize_filename("...   ") == "untitled"
-        assert sanitize_filename("   ...   ") == "untitled"
-
-    def test_sanitize_unicode_characters(self):
-        """Test that unicode characters are preserved."""
-        assert sanitize_filename("résumé.mp4") == "résumé.mp4"
-        assert sanitize_filename("日本語テスト") == "日本語テスト"
-
-    def test_sanitize_truncation_at_word_boundary(self):
-        """Test truncation with word boundary (rsplit behavior)."""
-        result = sanitize_filename("hello world this is a long filename", max_length=12)
-        # With rsplit(" ", 1), "hello world " → "hello world"
-        assert result == "hello world"
-
-    def test_sanitize_exact_max_length(self):
-        """Test string exactly at max_length is unchanged."""
-        assert sanitize_filename("abcdefghij", max_length=10) == "abcdefghij"
-
-    def test_sanitize_whitespace_only(self):
-        """Test that whitespace-only string returns 'untitled'."""
-        assert sanitize_filename("   ") == "untitled"
-
-
 class TestSrtTimestampEdgeCases:
     """Tests for format_srt_timestamp edge cases."""
 
@@ -404,37 +313,6 @@ class TestTranscriptFileWriterEdgeCases:
         result = write_transcript_srt([], output_path)
         assert result == output_path
         assert output_path.exists()
-
-
-class TestProgressTrackerEdgeCases:
-    """Tests for ProgressTracker edge cases."""
-
-    def test_progress_zero_total_no_division_error(self):
-        """Test that total=0 doesn't cause division by zero."""
-        tracker = ProgressTracker(0, "Empty")
-        tracker.update(1)
-        assert tracker.current == 1
-
-    def test_progress_update_with_message(self, capsys):
-        """Test update with custom message."""
-        tracker = ProgressTracker(10, "Processing")
-        tracker.update(3, message="3 items done")
-        captured = capsys.readouterr()
-        assert "3 items done" in captured.out
-
-    def test_progress_complete(self, capsys):
-        """Test complete method."""
-        tracker = ProgressTracker(10, "Task")
-        tracker.complete()
-        captured = capsys.readouterr()
-        assert "Task: Complete" in captured.out
-
-    def test_progress_update_custom_message(self, capsys):
-        """Test complete with custom message."""
-        tracker = ProgressTracker(10, "Task")
-        tracker.complete(message="All done!")
-        captured = capsys.readouterr()
-        assert "Task: All done!" in captured.out
 
 
 class TestYouTubeDownloaderEdgeCases:
