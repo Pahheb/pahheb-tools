@@ -80,9 +80,9 @@ class Config:
 
         return args
 
-    def find_combined_files(self) -> list[Path]:
+    def find_combined_files(self) -> list[str | Path]:
         """Find any combined*.txt files in input files."""
-        combined = []
+        combined: list[str | Path] = []
         for f in self.input_files:
             if isinstance(f, str):
                 stem = f.split("/")[-1].split("\\")[-1]
@@ -95,10 +95,10 @@ class Config:
                     combined.append(f)
         return combined
 
-    def filter_input_files(self) -> list[Path]:
+    def filter_input_files(self) -> list[str | Path]:
         """Filter input files based on skip_combined setting."""
         if self.skip_combined:
-            result = []
+            result: list[str | Path] = []
             for f in self.input_files:
                 if isinstance(f, str):
                     stem = f.split("/")[-1].split("\\")[-1]

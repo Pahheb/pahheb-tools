@@ -175,7 +175,7 @@ def main():
     if combined_files:
         print(
             f"\nWarning: Detected {len(combined_files)} combined file(s) in input: "
-            f"{', '.join(f.name for f in combined_files)}",
+            f"{', '.join(f.name if isinstance(f, Path) else f for f in combined_files)}",
             file=sys.stderr,
         )
         if config.unified:
@@ -223,7 +223,7 @@ def main():
                 )
             sys.exit(1)
 
-        processed_files = []
+        processed_files: list[Path] = []
         transcribed_count = 0
         transcribed_errors = 0
         summarized_errors = 0
@@ -286,7 +286,7 @@ def main():
                     sys.exit(1)
                 return
         else:
-            processed_files = config.filter_input_files()
+            processed_files = config.filter_input_files()  # type: ignore[assignment]
 
         if not processed_files:
             print("Error: No valid input files to process", file=sys.stderr)
