@@ -1400,7 +1400,13 @@ class TestSummarizeMainVerbose:
             patch("summarize_src.__main__.get_provider", return_value=mock_provider),
             patch(
                 "sys.argv",
-                ["summarize", str(txt), "--verbose"],
+                [
+                    "summarize",
+                    str(txt),
+                    "--verbose",
+                    "--output-dir",
+                    str(tmp_path),
+                ],
             ),
         ):
             main()

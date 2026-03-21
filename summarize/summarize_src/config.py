@@ -4,6 +4,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+def _stem(f: str | Path) -> str:
+    """Extract filename stem from a string path or Path object."""
+    if isinstance(f, Path):
+        return f.stem.lower()
+    name = f.split("/")[-1].split("\\")[-1]
+    if "?" in name:
+        name = name.split("?")[0]
+    return Path(name).stem.lower()
+
+
 @dataclass
 class Config:
     """Configuration for summarize tool."""
@@ -82,31 +92,12 @@ class Config:
 
     def find_combined_files(self) -> list[str | Path]:
         """Find any combined*.txt files in input files."""
-        combined: list[str | Path] = []
-        for f in self.input_files:
-            if isinstance(f, str):
-                stem = f.split("/")[-1].split("\\")[-1]
-                if "?" in stem:
-                    stem = stem.split("?")[0]
-                if "combined" in stem.lower() and f.endswith(".txt"):
-                    combined.append(f)
-            else:
-                if "combined" in f.stem.lower() and f.suffix == ".txt":
-                    combined.append(f)
-        return combined
+        return [
+            f for f in self.input_files if "combined" in _stem(f) and _stem(f) != ""
+        ]
 
     def filter_input_files(self) -> list[str | Path]:
         """Filter input files based on skip_combined setting."""
         if self.skip_combined:
-            result: list[str | Path] = []
-            for f in self.input_files:
-                if isinstance(f, str):
-                    stem = f.split("/")[-1].split("\\")[-1]
-                    if "?" in stem:
-                        stem = stem.split("?")[0]
-                else:
-                    stem = f.stem.lower()
-                if "combined" not in stem:
-                    result.append(f)
-            return result
+            return [f for f in self.input_files if "combined" not in _stem(f)]
         return self.input_files

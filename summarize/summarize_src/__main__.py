@@ -12,7 +12,7 @@ from .summarizer import (
     SummarizerError,
     get_provider,
 )
-from .transcription import find_transcription_file, read_transcription, transcribe_file
+from .transcription import read_transcription
 
 
 def summarize_file(
@@ -230,27 +230,11 @@ def main():
 
         if config.transcribe_first:
             if config.unified or config.single_threaded:
-                for file_path in config.input_files:
-                    txt_path = find_transcription_file(
-                        file_path, config.transcribe_output_dir
-                    )
-                    if txt_path:
-                        if config.verbose:
-                            print(f"Using existing transcription: {txt_path}")
-                        processed_files.append(txt_path)
-                    else:
-                        try:
-                            txt_path = transcribe_file(
-                                file_path, config, config.verbose
-                            )
-                            processed_files.append(txt_path)
-                            transcribed_count += 1
-                        except Exception as e:
-                            print(
-                                f"Warning: Transcription failed for {file_path}: {e}",
-                                file=sys.stderr,
-                            )
-                            transcribed_errors += 1
+                processed_files, tc, te = _transcribe_then_combine(
+                    config.input_files, config, config.verbose
+                )
+                transcribed_count = tc
+                transcribed_errors = te
             elif config.combine:
                 processed_files, tc, te = _transcribe_then_combine(
                     config.input_files, config, config.verbose

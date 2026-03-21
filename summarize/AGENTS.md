@@ -37,9 +37,7 @@ __main__.py  →  transcription.py (read_transcription, transcribe_file, find_tr
 
 ## Known Issues
 
-- `Config.input_files: list[str | Path]` — YouTube URLs are strings, files are Paths. `filter_input_files()` returns mixed types, `# type: ignore[assignment]` in `__main__.py`
-- `sanitize_filename` was removed (was never called in production)
-- `WatsonxProvider` was removed (raised `NotImplementedError`)
+- `Config.input_files: list[str | Path]` — YouTube URLs are strings, files are Paths. `filter_input_files()` returns mixed types, `# type: ignore[assignment]` in `__main__.py` (Python list invariance issue)
 
 ## Commands
 

@@ -721,8 +721,8 @@ class TestThreadedPipeline:
 
         with (
             patch("summarize_src.__main__.get_provider") as mock_get_provider,
-            patch("summarize_src.__main__.find_transcription_file") as mock_find,
-            patch("summarize_src.__main__.transcribe_file") as mock_transcribe,
+            patch("summarize_src.pipeline.find_transcription_file") as mock_find,
+            patch("summarize_src.pipeline.transcribe_file") as mock_transcribe,
             patch("summarize_src.__main__.summarize_file") as mock_summarize,
         ):
             mock_provider = MagicMock()

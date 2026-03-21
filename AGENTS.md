@@ -67,9 +67,8 @@ Types: `feat`, `fix`, `ref`, `test`, `ci`, `docs`, `chore`. Scope is optional. I
 
 ## Known Design Debts
 
-- `sanitize_filename` in `transcribe/youtube_processor.py` has `import re` inside function body
-- `Config.input_files` in summarize is `list[str | Path]` — non-transcribe path passes mixed types to functions expecting `Path` (has `# type: ignore[assignment]`)
-- `--single-threaded` path in summarize `__main__.py` duplicates transcription loop logic from `pipeline.py`
+- `Config.input_files: list[str | Path]` — YouTube URLs are strings, local files are Paths. `filter_input_files()` returns mixed types, `# type: ignore[assignment]` in `__main__.py` (Python list invariance issue)
+- `--single-threaded` patches `find_transcription_file` on `pipeline` in tests — same call site as threaded path but without threading
 
 ## Key Conventions
 

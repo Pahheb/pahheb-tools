@@ -47,7 +47,6 @@ __main__.py  →  cli.py → config.py
 
 ## Known Issues
 
-- `sanitize_filename` in `youtube_processor.py` has `import re` inside function body (works fine, just unconventional)
 - `torch` imported unconditionally at module level in `whisper.py` — crashes if torch not installed
 - FFmpeg arnndn support check runs subprocess on every `process_audio(denoise=True)` call (no caching)
 
