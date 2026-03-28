@@ -5,9 +5,10 @@ Local + YouTube audio transcription using faster-whisper (OpenAI Whisper via CTr
 ## Flow
 
 1. `cli.py` parses args → `config.py` stores config
-2. If `--source youtube`: `youtube_processor.py` → `youtube_downloader.py` (yt-dlp) → `audio_processor.py` (FFmpeg) → `whisper.py` (transcribe)
-3. If `--source local`: `local_processor.py` → `audio_processor.py` → `whisper.py`
-4. `file_writer.py` writes TXT and optional SRT output
+2. `__main__.py` loops over `args.inputs`, auto-detects source per input (YouTube URL vs local file)
+3. If YouTube: `youtube_processor.py` → `youtube_downloader.py` (yt-dlp) → `audio_processor.py` (FFmpeg) → `whisper.py`
+4. If local: `local_processor.py` → `audio_processor.py` → `whisper.py`
+5. `file_writer.py` writes TXT and optional SRT output
 
 ## Pipeline: YouTube
 
@@ -32,12 +33,16 @@ local_processor.py
 
 ```
 __main__.py  →  cli.py → config.py
+            →  _is_youtube_url() (auto-detect source)
+            →  _process_input() (dispatches to processor based on source)
             →  local_processor.py → audio_processor.py → whisper.py → file_writer.py
             →  youtube_processor.py → youtube_downloader.py → audio_processor.py → whisper.py → file_writer.py
 ```
 
 ## Key Functions
 
+- `__main__._is_youtube_url(text)` — detects YouTube URLs via regex
+- `__main__._process_input(config, input_arg, force_source)` — dispatches one input to local or YouTube processor
 - `whisper.transcribe_audio()` — loads model, runs inference, returns `[{"text", "start", "end"}]`
 - `whisper.get_compute_type(device)` — returns int8/float16 based on device
 - `audio_processor.process_audio()` — calls FFmpeg for WAV conversion + optional denoise/VAD/enhance
@@ -59,7 +64,7 @@ __main__.py  →  cli.py → config.py
 | Typecheck | `python -m mypy transcribe_src/ --config-file mypy.ini` |
 | Test | `python -m pytest tests/ -q` |
 | Test single | `python -m pytest tests/test_transcribe.py -q` |
-| Run | `transcribe <file_or_url> [--source youtube] [--model small]` |
+    | Run | `transcribe <file> [file2] [--source youtube] [--model small]` |
 
 ## Test Patterns
 

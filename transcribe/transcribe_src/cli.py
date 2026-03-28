@@ -12,28 +12,26 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Local file transcription
+  # Single file
   transcribe /path/to/audio.mp3
   transcribe video.mov --model medium --srt
 
-  # YouTube transcription
+  # YouTube video
   transcribe https://www.youtube.com/watch?v=VIDEO_ID --source youtube
-  transcribe https://youtu.be/VIDEO_ID -s youtube --srt
 
-  # With audio enhancement
-  transcribe audio.mp3 --audio-enhance --srt
+  # Multiple files (auto-detects local vs YouTube)
+  transcribe audio.mp3 video.mov https://youtu.be/VIDEO_ID
 
-  # With RNNoise denoising
-  transcribe audio.mp3 --denoise --denoise-model ./models/std.rnnn
+  # Multiple files with audio enhancement
+  transcribe audio1.mp3 audio2.mp3 --audio-enhance --srt
         """,
     )
 
     parser.add_argument(
-        "input",
+        "inputs",
         type=str,
-        nargs="?",
-        default=None,
-        help="Input file path or YouTube URL",
+        nargs="+",
+        help="Input file paths or YouTube URLs (one or more)",
     )
 
     parser.add_argument(
@@ -41,8 +39,8 @@ Examples:
         "-s",
         type=str,
         choices=["local", "youtube"],
-        default="local",
-        help="Input source type (default: local)",
+        default=None,
+        help="Force input source type for all inputs (default: auto-detect per input)",
     )
 
     parser.add_argument(
@@ -129,10 +127,6 @@ Examples:
     )
 
     args = parser.parse_args()
-
-    if args.input is None:
-        parser.print_help()
-        parser.exit()
 
     args.output_dir = Path(args.output_dir).expanduser().resolve()
 
