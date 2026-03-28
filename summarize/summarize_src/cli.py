@@ -136,7 +136,7 @@ Examples:
         "--provider",
         "-p",
         type=str,
-        choices=["ollama", "huggingface", "watsonx"],
+        choices=["ollama", "huggingface"],
         default="ollama",
         help="AI provider for summarization (default: ollama)",
     )

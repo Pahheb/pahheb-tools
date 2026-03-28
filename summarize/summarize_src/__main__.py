@@ -1,161 +1,18 @@
 """CLI entry point for summarize tool."""
 
-import queue
-import re
-import subprocess
 import sys
-import threading
-from collections.abc import Sequence
 from pathlib import Path
 
 from .cli import parse_args
 from .config import Config
-from .file_writer import (
-    write_summary_json,
-    write_summary_md,
-    write_summary_txt,
-)
+from .file_writer import write_summary
+from .pipeline import _transcribe_then_combine, _transcribe_then_summarize_thread
 from .summarizer import (
     ProviderNotAvailableError,
     SummarizerError,
     get_provider,
 )
-
-
-def extract_video_id(url: str) -> str | None:
-    """Extract YouTube video ID from various URL formats."""
-    patterns = [
-        r"(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)([a-zA-Z0-9_-]{11})",
-        r"^([a-zA-Z0-9_-]{11})$",
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, url)
-        if match:
-            return match.group(1)
-    return None
-
-
-def find_transcription_file(
-    file_path: str | Path, transcribe_output_dir: Path
-) -> Path | None:
-    """Find an existing transcription file for a given input path/URL."""
-    if isinstance(file_path, Path):
-        stem = file_path.stem
-        txt_path = transcribe_output_dir / f"{stem}.txt"
-        if txt_path.exists():
-            return txt_path
-        matching = list(transcribe_output_dir.glob(f"{stem}*.txt"))
-        if matching:
-            return max(matching, key=lambda p: p.stat().st_mtime)
-    else:
-        video_id = extract_video_id(file_path)
-        if video_id:
-            matching = list(transcribe_output_dir.glob(f"{video_id}*.txt"))
-            if matching:
-                return max(matching, key=lambda p: p.stat().st_mtime)
-
-        stem = file_path.split("/")[-1].split("\\")[-1]
-        if "?" in stem:
-            stem = stem.split("?")[0]
-
-        if not stem.endswith(".txt"):
-            txt_path = transcribe_output_dir / f"{stem}.txt"
-            if txt_path.exists():
-                return txt_path
-
-        matching = list(transcribe_output_dir.glob(f"{stem}*.txt"))
-        if matching:
-            return max(matching, key=lambda p: p.stat().st_mtime)
-
-        if "." in stem:
-            base_stem = stem.rsplit(".", 1)[0]
-            txt_path = transcribe_output_dir / f"{base_stem}.txt"
-            if txt_path.exists():
-                return txt_path
-            matching = list(transcribe_output_dir.glob(f"{base_stem}*.txt"))
-            if matching:
-                return max(matching, key=lambda p: p.stat().st_mtime)
-
-    return None
-
-
-def transcribe_file(
-    file_path: str | Path, config: Config, verbose: bool = False
-) -> Path:
-    """Transcribe a video/audio file using the transcribe tool."""
-    config.transcribe_output_dir.mkdir(parents=True, exist_ok=True)
-
-    input_str = str(file_path)
-    transcribe_cmd = ["transcribe", input_str]
-    transcribe_cmd.extend(config.build_transcribe_args())
-
-    if verbose:
-        print(f"Transcribing: {input_str}")
-        print(f"Transcribe output dir: {config.transcribe_output_dir}")
-
-    try:
-        result = subprocess.run(  # noqa: S603
-            transcribe_cmd,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-
-        if verbose:
-            print(result.stdout)
-
-        txt_file = find_transcription_file(input_str, config.transcribe_output_dir)
-        if txt_file:
-            return txt_file
-
-        raise FileNotFoundError(f"Could not find transcription output for {file_path}")
-
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Transcription failed: {e.stderr}") from e
-
-
-def read_transcription(file_path: Path | str) -> str:
-    """Read transcription from a text file."""
-    if isinstance(file_path, str):
-        file_path = Path(file_path)
-    content = file_path.read_text(encoding="utf-8")
-
-    lines = content.split("\n")
-    transcript_lines = []
-    in_transcript = False
-
-    metadata_prefixes = (
-        "source:",
-        "video_id:",
-        "video_title:",
-        "url:",
-        "model:",
-        "language:",
-        "duration:",
-    )
-
-    for line in lines:
-        line_lower = line.lower().strip()
-        stripped = line.strip()
-
-        if stripped.startswith("---") and stripped.endswith("---"):
-            if in_transcript:
-                break
-            in_transcript = True
-            continue
-        if in_transcript:
-            transcript_lines.append(line)
-        elif stripped.startswith(metadata_prefixes):
-            continue
-        elif stripped and not any(
-            k in line_lower
-            for k in ["video", "title", "language", "source", "duration"]
-        ):
-            in_transcript = True
-            transcript_lines.append(line)
-
-    return "\n".join(transcript_lines).strip() or content
+from .transcription import read_transcription
 
 
 def summarize_file(
@@ -178,15 +35,7 @@ def summarize_file(
 
     result = provider.summarize(text, summary_type=config.summary_length)
 
-    output_filename = file_path.stem
-    if config.output_format == "txt":
-        output_filename += ".txt"
-    elif config.output_format == "md":
-        output_filename += ".md"
-    else:
-        output_filename += ".json"
-
-    output_path = config.output_dir / output_filename
+    output_path = config.output_dir / f"{file_path.stem}.{config.output_format}"
 
     metadata = {
         "source": str(file_path),
@@ -194,22 +43,9 @@ def summarize_file(
         **result.metadata,
     }
 
-    if config.output_format == "txt":
-        write_summary_txt(result.summary, output_path, metadata, result.key_points)
-    elif config.output_format == "md":
-        write_summary_md(
-            result.summary,
-            output_path,
-            result.key_points,
-            metadata,
-        )
-    else:
-        write_summary_json(
-            result.summary,
-            output_path,
-            result.key_points,
-            metadata,
-        )
+    write_summary(
+        result.summary, output_path, config.output_format, result.key_points, metadata
+    )
 
     return output_path
 
@@ -236,15 +72,7 @@ def summarize_unified(
 
     result = provider.summarize(full_text, summary_type=config.summary_length)
 
-    output_filename = "unified_summary"
-    if config.output_format == "txt":
-        output_filename += ".txt"
-    elif config.output_format == "md":
-        output_filename += ".md"
-    else:
-        output_filename += ".json"
-
-    output_path = config.output_dir / output_filename
+    output_path = config.output_dir / f"unified_summary.{config.output_format}"
 
     metadata = {
         "source": "unified",
@@ -253,22 +81,9 @@ def summarize_unified(
         **result.metadata,
     }
 
-    if config.output_format == "txt":
-        write_summary_txt(result.summary, output_path, metadata, result.key_points)
-    elif config.output_format == "md":
-        write_summary_md(
-            result.summary,
-            output_path,
-            result.key_points,
-            metadata,
-        )
-    else:
-        write_summary_json(
-            result.summary,
-            output_path,
-            result.key_points,
-            metadata,
-        )
+    write_summary(
+        result.summary, output_path, config.output_format, result.key_points, metadata
+    )
 
     return output_path
 
@@ -296,15 +111,7 @@ def summarize_combined(
 
     combined_text = "\n\n".join(summaries)
 
-    output_filename = "combined_summary"
-    if config.output_format == "txt":
-        output_filename += ".txt"
-    elif config.output_format == "md":
-        output_filename += ".md"
-    else:
-        output_filename += ".json"
-
-    output_path = config.output_dir / output_filename
+    output_path = config.output_dir / f"combined_summary.{config.output_format}"
 
     metadata = {
         "source": "combined",
@@ -312,135 +119,16 @@ def summarize_combined(
         "summary_type": config.summary_length,
     }
 
-    if config.output_format == "txt":
-        write_summary_txt(combined_text, output_path, metadata, key_points)
-    elif config.output_format == "md":
-        write_summary_md(
-            combined_text,
-            output_path,
-            key_points,
-            metadata,
-        )
-    else:
-        write_summary_json(
-            combined_text,
-            output_path,
-            key_points,
-            metadata,
-        )
+    write_summary(
+        combined_text, output_path, config.output_format, key_points, metadata
+    )
 
     return output_path
 
 
-_SENTINEL = object()
-
-
-def _transcribe_then_summarize_thread(
-    input_files: Sequence[str | Path],
-    config: Config,
-    provider,
-    verbose: bool = False,
-) -> tuple[list[Path], int, int, int]:
-    """Two-thread pipeline: transcriber feeds queue, summarizer consumes.
-
-    Only one Whisper instance runs at a time (no GPU/CPU contention).
-    Summarization starts immediately after the first transcription finishes.
-    """
-    summary_queue: queue.Queue[Path | object] = queue.Queue()
-    output_paths: list[Path] = []
-    errors: list[tuple[str, Exception]] = []
-    lock = threading.Lock()
-
-    def summarize_worker() -> None:
-        """Consume transcribed files from queue and summarize."""
-        while True:
-            item = summary_queue.get(timeout=600)
-            if item is _SENTINEL:
-                summary_queue.task_done()
-                break
-            txt_path = item
-            assert isinstance(txt_path, Path)
-            try:
-                out = summarize_file(txt_path, config, provider, verbose)
-                print(f"✓ Summary saved to: {out}")
-                with lock:
-                    output_paths.append(out)
-            except Exception as e:
-                print(
-                    f"Warning: Summarization failed for {txt_path}: {e}",
-                    file=sys.stderr,
-                )
-                with lock:
-                    errors.append(("summarize", e))
-            finally:
-                summary_queue.task_done()
-
-    sum_thread = threading.Thread(target=summarize_worker, daemon=True)
-    sum_thread.start()
-
-    transcribed_count = 0
-    transcribed_errors = 0
-
-    # Transcriber runs on main thread (sequential within itself)
-    for file_path in input_files:
-        txt_path = find_transcription_file(file_path, config.transcribe_output_dir)
-        if txt_path:
-            if verbose:
-                print(f"Using existing transcription: {txt_path}")
-            summary_queue.put(txt_path)
-        else:
-            try:
-                txt_path = transcribe_file(file_path, config, verbose)
-                summary_queue.put(txt_path)
-                transcribed_count += 1
-            except Exception as e:
-                print(
-                    f"Warning: Transcription failed for {file_path}: {e}",
-                    file=sys.stderr,
-                )
-                transcribed_errors += 1
-                with lock:
-                    errors.append(("transcribe", e))
-
-    # Signal summarizer to finish
-    summary_queue.put(_SENTINEL)
-    sum_thread.join()
-
-    summarized_errors = len([e for t, e in errors if t == "summarize"])
-
-    return output_paths, transcribed_count, transcribed_errors, summarized_errors
-
-
-def _transcribe_then_combine(
-    input_files: Sequence[str | Path],
-    config: Config,
-    provider,
-    verbose: bool = False,
-) -> tuple[list[Path], int, int]:
-    """Threaded transcription followed by sequential combine."""
-    processed_files: list[Path] = []
-    transcribed_count = 0
-    transcribed_errors = 0
-
-    for file_path in input_files:
-        txt_path = find_transcription_file(file_path, config.transcribe_output_dir)
-        if txt_path:
-            if verbose:
-                print(f"Using existing transcription: {txt_path}")
-            processed_files.append(txt_path)
-        else:
-            try:
-                txt_path = transcribe_file(file_path, config, verbose)
-                processed_files.append(txt_path)
-                transcribed_count += 1
-            except Exception as e:
-                print(
-                    f"Warning: Transcription failed for {file_path}: {e}",
-                    file=sys.stderr,
-                )
-                transcribed_errors += 1
-
-    return processed_files, transcribed_count, transcribed_errors
+def _summarize_with_provider(file_path, config, provider, verbose):
+    """Summarize a single file (used as callback for threaded pipeline)."""
+    return summarize_file(file_path, config, provider, verbose)
 
 
 def main():
@@ -487,7 +175,7 @@ def main():
     if combined_files:
         print(
             f"\nWarning: Detected {len(combined_files)} combined file(s) in input: "
-            f"{', '.join(f.name for f in combined_files)}",
+            f"{', '.join(f.name if isinstance(f, Path) else f for f in combined_files)}",
             file=sys.stderr,
         )
         if config.unified:
@@ -533,62 +221,37 @@ def main():
                     "Install with: pip install transformers torch",
                     file=sys.stderr,
                 )
-            elif config.provider == "watsonx":
-                print(
-                    "Error: watsonx.ai credentials not configured.",
-                    file=sys.stderr,
-                )
-                print(
-                    "Set WATSONX_API_KEY and WATSONX_PROJECT_ID environment variables.",
-                    file=sys.stderr,
-                )
             sys.exit(1)
 
-        processed_files = []
+        processed_files: list[Path] = []
         transcribed_count = 0
         transcribed_errors = 0
         summarized_errors = 0
 
         if config.transcribe_first:
             if config.unified or config.single_threaded:
-                # Sequential: all transcriptions, then one unified summary
-                for file_path in config.input_files:
-                    txt_path = find_transcription_file(
-                        file_path, config.transcribe_output_dir
-                    )
-                    if txt_path:
-                        if config.verbose:
-                            print(f"Using existing transcription: {txt_path}")
-                        processed_files.append(txt_path)
-                    else:
-                        try:
-                            txt_path = transcribe_file(
-                                file_path, config, config.verbose
-                            )
-                            processed_files.append(txt_path)
-                            transcribed_count += 1
-                        except Exception as e:
-                            print(
-                                f"Warning: Transcription failed for {file_path}: {e}",
-                                file=sys.stderr,
-                            )
-                            transcribed_errors += 1
-            elif config.combine:
-                # Transcribe sequentially, then combine summaries
                 processed_files, tc, te = _transcribe_then_combine(
-                    config.input_files, config, provider, config.verbose
+                    config.input_files, config, config.verbose
+                )
+                transcribed_count = tc
+                transcribed_errors = te
+            elif config.combine:
+                processed_files, tc, te = _transcribe_then_combine(
+                    config.input_files, config, config.verbose
                 )
                 transcribed_count = tc
                 transcribed_errors = te
             else:
-                # Default: two-thread pipeline (transcribe → summarize in parallel)
+                summarize_fn = lambda fp, c, v: _summarize_with_provider(  # noqa: E731
+                    fp, c, provider, v
+                )
                 (
                     outputs,
                     transcribed_count,
                     transcribed_errors,
                     summarized_errors,
                 ) = _transcribe_then_summarize_thread(
-                    config.input_files, config, provider, config.verbose
+                    config.input_files, config, summarize_fn, config.verbose
                 )
                 if transcribed_errors or summarized_errors:
                     total = len(outputs) + transcribed_errors + summarized_errors
@@ -607,7 +270,7 @@ def main():
                     sys.exit(1)
                 return
         else:
-            processed_files = config.filter_input_files()
+            processed_files = config.filter_input_files()  # type: ignore[assignment]
 
         if not processed_files:
             print("Error: No valid input files to process", file=sys.stderr)

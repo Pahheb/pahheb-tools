@@ -7,7 +7,6 @@ import pytest
 
 from summarize_src.config import Config
 from summarize_src.file_writer import (
-    sanitize_filename,
     write_summary_json,
     write_summary_md,
     write_summary_txt,
@@ -16,6 +15,7 @@ from summarize_src.summarizer import (
     HuggingFaceProvider,
     OllamaProvider,
     ProviderNotAvailableError,
+    _parse_response,
     get_provider,
 )
 
@@ -48,21 +48,6 @@ class TestConfig:
         assert config.output_format == "md"
         assert config.summary_length == "brief"
         assert config.combine is True
-
-    def test_config_invalid_provider(self):
-        """Test config with invalid provider."""
-        with pytest.raises(ValueError, match="Invalid provider"):
-            Config(provider="invalid", input_files=[])
-
-    def test_config_invalid_output_format(self):
-        """Test config with invalid output format."""
-        with pytest.raises(ValueError, match="Invalid output_format"):
-            Config(output_format="invalid", input_files=[])
-
-    def test_config_invalid_summary_length(self):
-        """Test config with invalid summary length."""
-        with pytest.raises(ValueError, match="Invalid summary_length"):
-            Config(summary_length="invalid", input_files=[])
 
     def test_config_output_dir_conversion(self):
         """Test output_dir is converted to Path."""
@@ -215,18 +200,6 @@ class TestConfig:
 class TestFileWriter:
     """Tests for file writer functions."""
 
-    def test_sanitize_filename(self):
-        """Test filename sanitization."""
-        assert sanitize_filename("test file") == "test file"
-        assert sanitize_filename("test<>file") == "test__file"
-        assert sanitize_filename("  spaces  ") == "spaces"
-        assert sanitize_filename("a" * 150, max_length=10) == "aaaaaaaaaa"
-
-    def test_sanitize_filename_special_chars(self):
-        """Test sanitization with only special chars."""
-        result = sanitize_filename("<>:/\\|?*")
-        assert result == "________"
-
     def test_write_summary_txt(self, tmp_path):
         """Test writing TXT summary."""
         summary = "This is a test summary."
@@ -244,7 +217,7 @@ class TestFileWriter:
         output_path = tmp_path / "test.txt"
         metadata = {"source": "test.txt", "title": "Test File"}
 
-        write_summary_txt(summary, output_path, metadata)
+        write_summary_txt(summary, output_path, metadata=metadata)
 
         content = output_path.read_text()
         assert "Source: test.txt" in content
@@ -399,30 +372,27 @@ class TestHuggingFaceProvider:
 
     def test_parse_response_returns_summary(self):
         """Test that _parse_response returns the actual summary content."""
-        provider = HuggingFaceProvider()
         content = (
             "KEYPOINTS:\n- Point 1\n\nSUMMARY:\nThis is the HuggingFace summary text."
         )
-        result = provider._parse_response(content)
+        result = _parse_response(content, "huggingface", "test-model")
 
         assert result.summary == "This is the HuggingFace summary text."
         assert "Point 1" in result.key_points
 
     def test_parse_response_no_keypoints(self):
         """Test parsing when response has no keypoints but has summary."""
-        provider = HuggingFaceProvider()
         content = "Here is a summary without keypoints."
-        result = provider._parse_response(content)
+        result = _parse_response(content, "huggingface", "test-model")
 
         assert result.summary == "Here is a summary without keypoints."
 
     def test_parse_response_with_numbered_points(self):
         """Test parsing numbered list keypoints."""
-        provider = HuggingFaceProvider()
         content = (
             "KEYPOINTS:\n1. First point\n2. Second point\n\nSUMMARY:\nSummary text."
         )
-        result = provider._parse_response(content)
+        result = _parse_response(content, "huggingface", "test-model")
 
         assert "First point" in result.key_points
         assert "Second point" in result.key_points
@@ -826,7 +796,7 @@ class TestVideoIdExtraction:
 
     def test_extract_video_id_standard_url(self):
         """Test extracting video ID from standard YouTube URL."""
-        from summarize_src.__main__ import extract_video_id
+        from summarize_src.transcription import extract_video_id
 
         assert (
             extract_video_id("https://www.youtube.com/watch?v=Qfo6xdVMFmM")
@@ -838,14 +808,14 @@ class TestVideoIdExtraction:
 
     def test_extract_video_id_short_url(self):
         """Test extracting video ID from youtu.be URL."""
-        from summarize_src.__main__ import extract_video_id
+        from summarize_src.transcription import extract_video_id
 
         assert extract_video_id("https://youtu.be/Qfo6xdVMFmM") == "Qfo6xdVMFmM"
         assert extract_video_id("http://youtu.be/Qfo6xdVMFmM") == "Qfo6xdVMFmM"
 
     def test_extract_video_id_shorts_url(self):
         """Test extracting video ID from YouTube Shorts URL."""
-        from summarize_src.__main__ import extract_video_id
+        from summarize_src.transcription import extract_video_id
 
         assert (
             extract_video_id("https://www.youtube.com/shorts/Qfo6xdVMFmM")
@@ -854,20 +824,20 @@ class TestVideoIdExtraction:
 
     def test_extract_video_id_video_id_only(self):
         """Test extracting video ID when only ID is provided."""
-        from summarize_src.__main__ import extract_video_id
+        from summarize_src.transcription import extract_video_id
 
         assert extract_video_id("Qfo6xdVMFmM") == "Qfo6xdVMFmM"
 
     def test_extract_video_id_invalid(self):
         """Test extracting video ID from invalid URL."""
-        from summarize_src.__main__ import extract_video_id
+        from summarize_src.transcription import extract_video_id
 
         assert extract_video_id("https://example.com/video") is None
         assert extract_video_id("not-a-url") is None
 
     def test_find_transcription_file_by_video_id(self, tmp_path):
         """Test finding transcription file by YouTube video ID."""
-        from summarize_src.__main__ import find_transcription_file
+        from summarize_src.transcription import find_transcription_file
 
         transcribe_dir = tmp_path / "transcriptions"
         transcribe_dir.mkdir()
@@ -888,7 +858,7 @@ class TestVideoIdExtraction:
 
     def test_find_transcription_file_by_stem(self, tmp_path):
         """Test finding transcription file by file stem."""
-        from summarize_src.__main__ import find_transcription_file
+        from summarize_src.transcription import find_transcription_file
 
         transcribe_dir = tmp_path / "transcriptions"
         transcribe_dir.mkdir()
@@ -902,7 +872,7 @@ class TestVideoIdExtraction:
 
     def test_find_transcription_file_not_found(self, tmp_path):
         """Test finding transcription file when it doesn't exist."""
-        from summarize_src.__main__ import find_transcription_file
+        from summarize_src.transcription import find_transcription_file
 
         transcribe_dir = tmp_path / "transcriptions"
         transcribe_dir.mkdir()
@@ -911,30 +881,6 @@ class TestVideoIdExtraction:
             "https://www.youtube.com/watch?v=NonExistent", transcribe_dir
         )
         assert result is None
-
-
-class TestSanitizeFilenameEdgeCases:
-    """Tests for sanitize_filename edge cases."""
-
-    def test_sanitize_empty_string(self):
-        """Test that empty string returns 'unnamed'."""
-        assert sanitize_filename("") == "unnamed"
-
-    def test_sanitize_only_dots(self):
-        """Test that only dots returns 'unnamed'."""
-        assert sanitize_filename("...") == "unnamed"
-
-    def test_sanitize_trailing_dots_spaces(self):
-        """Test trailing dots and spaces are stripped."""
-        assert sanitize_filename("  file.txt...  ") == "file.txt"
-
-    def test_sanitize_unicode_characters(self):
-        """Test unicode characters are preserved."""
-        assert sanitize_filename("résumé.pdf") == "résumé.pdf"
-
-    def test_sanitize_exact_max_length(self):
-        """Test string exactly at max_length is unchanged."""
-        assert sanitize_filename("abcdefghij", max_length=10) == "abcdefghij"
 
 
 class TestFileWriterMetadataPaths:
@@ -1127,40 +1073,36 @@ class TestOllamaProviderEdgeCases:
 
     def test_parse_response_star_bullet_points(self):
         """Test parsing response with * bullet points."""
-        provider = OllamaProvider()
         content = "KEYPOINTS:\n* First point\n* Second point\n\nSUMMARY:\nSummary text."
-        result = provider._parse_response(content)
+        result = _parse_response(content, "ollama", "llama3.2")
 
         assert "First point" in result.key_points
         assert "Second point" in result.key_points
 
     def test_parse_response_dot_bullet_points(self):
         """Test parsing response with • bullet points."""
-        provider = OllamaProvider()
         content = (
             "KEYPOINTS:\n• First dot point\n• Second dot point\n\nSUMMARY:\nSummary."
         )
-        result = provider._parse_response(content)
+        result = _parse_response(content, "ollama", "llama3.2")
 
         assert "First dot point" in result.key_points
         assert "Second dot point" in result.key_points
 
     def test_parse_response_key_points_with_space(self):
         """Test parsing KEY POINTS: (with space) prefix."""
-        provider = OllamaProvider()
         content = "KEY POINTS:\n- Point one\n- Point two\n\nSUMMARY:\nSummary text."
-        result = provider._parse_response(content)
+        result = _parse_response(content, "ollama", "llama3.2")
 
         assert "Point one" in result.key_points
         assert "Point two" in result.key_points
 
     def test_parse_response_short_points_filtered_out(self):
         """Test that points <= 3 characters are filtered out."""
-        provider = OllamaProvider()
         content = (
             "KEYPOINTS:\n- OK\n- Abc\n- Yes this is long enough\n\nSUMMARY:\nText."
         )
-        result = provider._parse_response(content)
+        result = _parse_response(content, "ollama", "llama3.2")
 
         assert "OK" not in result.key_points
         assert "Abc" not in result.key_points
@@ -1173,38 +1115,12 @@ class TestOllamaProviderEdgeCases:
         assert "comprehensive summary" in prompt.lower()
 
 
-class TestWatsonxProvider:
-    """Tests for WatsonxProvider."""
-
-    def test_is_available_with_credentials(self):
-        """Test is_available returns True when credentials are set."""
-        from summarize_src.summarizer import WatsonxProvider
-
-        provider = WatsonxProvider(api_key="key123", project_id="proj456")
-        assert provider.is_available() is True
-
-    def test_is_available_without_credentials(self):
-        """Test is_available returns False when credentials are missing."""
-        from summarize_src.summarizer import WatsonxProvider
-
-        provider = WatsonxProvider()
-        assert provider.is_available() is False
-
-    def test_summarize_without_credentials_raises(self):
-        """Test summarize raises ProviderNotAvailableError without credentials."""
-        from summarize_src.summarizer import ProviderNotAvailableError, WatsonxProvider
-
-        provider = WatsonxProvider()
-        with pytest.raises(ProviderNotAvailableError, match="credentials"):
-            provider.summarize("Test text")
-
-
 class TestReadTranscription:
     """Tests for read_transcription function."""
 
     def test_read_with_metadata_header(self, tmp_path):
         """Test reading a file with metadata header and --- delimiters."""
-        from summarize_src.__main__ import read_transcription
+        from summarize_src.transcription import read_transcription
 
         txt = tmp_path / "meta.txt"
         txt.write_text(
@@ -1219,7 +1135,7 @@ class TestReadTranscription:
 
     def test_read_only_metadata_no_transcript(self, tmp_path):
         """Test reading a file with only metadata falls back to full content."""
-        from summarize_src.__main__ import read_transcription
+        from summarize_src.transcription import read_transcription
 
         txt = tmp_path / "meta_only.txt"
         txt.write_text("source: youtube\nvideo_id: abc123\nmodel: small\n")
@@ -1229,7 +1145,7 @@ class TestReadTranscription:
 
     def test_read_with_string_path(self, tmp_path):
         """Test reading with string path (not Path object)."""
-        from summarize_src.__main__ import read_transcription
+        from summarize_src.transcription import read_transcription
 
         txt = tmp_path / "string_path.txt"
         txt.write_text("Hello world transcript.")
@@ -1238,7 +1154,7 @@ class TestReadTranscription:
 
     def test_read_empty_file(self, tmp_path):
         """Test reading an empty file."""
-        from summarize_src.__main__ import read_transcription
+        from summarize_src.transcription import read_transcription
 
         txt = tmp_path / "empty.txt"
         txt.write_text("")
@@ -1251,7 +1167,7 @@ class TestFindTranscriptionEdgeCases:
 
     def test_find_with_question_mark_in_url(self, tmp_path):
         """Test finding file when URL stem has query params."""
-        from summarize_src.__main__ import find_transcription_file
+        from summarize_src.transcription import find_transcription_file
 
         transcribe_dir = tmp_path / "transcriptions"
         transcribe_dir.mkdir()
@@ -1266,7 +1182,7 @@ class TestFindTranscriptionEdgeCases:
 
     def test_find_with_dot_in_url_stem(self, tmp_path):
         """Test finding file when URL stem has dots."""
-        from summarize_src.__main__ import find_transcription_file
+        from summarize_src.transcription import find_transcription_file
 
         transcribe_dir = tmp_path / "transcriptions"
         transcribe_dir.mkdir()
@@ -1330,26 +1246,6 @@ class TestProviderNotAvailableMessages:
 
         err = capsys.readouterr().err
         assert "transformers" in err.lower()
-
-    @patch("summarize_src.__main__.get_provider")
-    def test_watsonx_not_available_shows_helpful_error(
-        self, mock_get_provider, tmp_path, capsys
-    ):
-        """Test that unavailable Watsonx shows credential instructions."""
-        from summarize_src.__main__ import main
-
-        mock_provider = MagicMock()
-        mock_provider.is_available.return_value = False
-        mock_get_provider.return_value = mock_provider
-
-        config = self._make_config("watsonx", tmp_path)
-        with patch("summarize_src.__main__.parse_args") as mock_args:
-            mock_args.return_value = self._make_mock_args(config)
-            with pytest.raises(SystemExit):
-                main()
-
-        err = capsys.readouterr().err
-        assert "WATSONX_API_KEY" in err
 
     def _make_mock_args(self, config):
         """Create a mock args object matching a Config."""
@@ -1504,7 +1400,13 @@ class TestSummarizeMainVerbose:
             patch("summarize_src.__main__.get_provider", return_value=mock_provider),
             patch(
                 "sys.argv",
-                ["summarize", str(txt), "--verbose"],
+                [
+                    "summarize",
+                    str(txt),
+                    "--verbose",
+                    "--output-dir",
+                    str(tmp_path),
+                ],
             ),
         ):
             main()

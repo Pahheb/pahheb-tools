@@ -689,3 +689,86 @@ class TestVerboseAndCleanup:
             mock_rmtree.assert_called_once()
             work_dir = out_dir / "work"
             assert str(work_dir) in str(mock_rmtree.call_args[0][0])
+
+
+class TestMultiInput:
+    """Test multi-input and auto-detection support."""
+
+    def test_is_youtube_url_detection(self) -> None:
+        """Test that _is_youtube_url correctly identifies YouTube URLs."""
+        from transcribe_src.__main__ import _is_youtube_url
+
+        assert _is_youtube_url("https://www.youtube.com/watch?v=abc123")
+        assert _is_youtube_url("https://youtu.be/abc123")
+        assert _is_youtube_url("https://youtube.com/shorts/abc123")
+        assert not _is_youtube_url("/path/to/file.mp3")
+        assert not _is_youtube_url("file.mp4")
+        assert not _is_youtube_url("https://example.com/video")
+
+    @patch("transcribe_src.__main__.process_local_file")
+    def test_multiple_local_files(self, mock_process, tmp_path: Path) -> None:
+        """Test processing multiple local files in one invocation."""
+        audio1 = tmp_path / "audio1.mp3"
+        audio1.write_text("fake audio")
+        audio2 = tmp_path / "audio2.mp3"
+        audio2.write_text("fake audio")
+        out_dir = tmp_path / "output"
+
+        mock_process.return_value = [out_dir / "audio1.txt"]
+
+        with patch(
+            "sys.argv",
+            ["transcribe", str(audio1), str(audio2), "-o", str(out_dir)],
+        ):
+            main()
+
+        assert mock_process.call_count == 2
+        assert mock_process.call_args_list[0][0][1] == audio1
+        assert mock_process.call_args_list[1][0][1] == audio2
+
+    @patch("transcribe_src.__main__.process_youtube_video")
+    @patch("transcribe_src.__main__.process_local_file")
+    def test_mixed_inputs_auto_detect(
+        self, mock_local, mock_youtube, tmp_path: Path
+    ) -> None:
+        """Test that mixed local/YouTube inputs are auto-detected."""
+        audio = tmp_path / "audio.mp3"
+        audio.write_text("fake audio")
+        out_dir = tmp_path / "output"
+
+        mock_local.return_value = [out_dir / "audio.txt"]
+        mock_youtube.return_value = [out_dir / "yt.txt"]
+
+        with patch(
+            "sys.argv",
+            [
+                "transcribe",
+                str(audio),
+                "https://www.youtube.com/watch?v=abc123",
+                "-o",
+                str(out_dir),
+            ],
+        ):
+            main()
+
+        mock_local.assert_called_once()
+        mock_youtube.assert_called_once()
+
+    @patch("transcribe_src.__main__.process_local_file")
+    def test_explicit_source_applies_to_all(self, mock_process, tmp_path: Path) -> None:
+        """Test that --source forces all inputs to that type."""
+        f1 = tmp_path / "audio1.mp3"
+        f1.write_text("fake")
+        f2 = tmp_path / "audio2.mp3"
+        f2.write_text("fake")
+        out_dir = tmp_path / "output"
+
+        mock_process.return_value = [out_dir / "out.txt"]
+
+        with patch(
+            "sys.argv",
+            ["transcribe", str(f1), str(f2), "--source", "local", "-o", str(out_dir)],
+        ):
+            main()
+
+        assert mock_process.call_count == 2

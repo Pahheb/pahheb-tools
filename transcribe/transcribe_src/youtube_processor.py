@@ -1,5 +1,6 @@
 """YouTube transcription processor."""
 
+import re
 import shutil
 from pathlib import Path
 
@@ -107,8 +108,6 @@ def process_youtube_video(
 
 def sanitize_filename(text: str, max_length: int = 100) -> str:
     """Sanitize text for use in filenames."""
-    import re
-
     sanitized = re.sub(r'[<>:"/\\|?*]', "_", text)
     sanitized = re.sub(r"\s+", " ", sanitized)
     sanitized = sanitized.strip(". ")

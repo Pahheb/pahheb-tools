@@ -8,3 +8,5 @@ summarize/summarize_src/__pycache__/
 summarize/tests/__pycache__
 /transcribe/tests/__pycache__/
 transcribe/transcribe_src/__pycache__/
+summaries/
+transcriptions/
